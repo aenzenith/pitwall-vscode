@@ -4,6 +4,13 @@ All notable changes to this extension are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and releases are cut
 by release-please from Conventional Commits.
 
+## [0.13.0](https://github.com/aenzenith/pitwall-vscode/compare/v0.12.2...v0.13.0) (2026-10-01)
+
+
+### Features
+
+* **storage:** shared state moved to ~/.pitwall ([96e261c](https://github.com/aenzenith/pitwall-vscode/commit/96e261cd32be378121d45152e7439476a6a8071b))
+
 ## [0.12.2](https://github.com/aenzenith/pitwall-vscode/compare/v0.12.1...v0.12.2) (2026-10-01)
 
 
