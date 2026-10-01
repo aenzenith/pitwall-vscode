@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 
 import { ClaudeWatch } from './claude';
 import { hasScript, pickFolder } from './resolve';
+import { killOrphan } from './process';
 import { ownedProjects, Registry, type RemoteCommand } from './registry';
 import { DevRunner, type Target, targetFromFolder, targetFromPath } from './runner';
 import { DevTree, favoriteOf, type ProjectNode } from './tree';
@@ -111,7 +112,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     }, 5000);
     context.subscriptions.push({ dispose: () => clearInterval(ticker) });
 
-    reapOrphans();
+    void reapOrphans();
     scanClaude();
     await sync();
     await autoStart();
@@ -121,15 +122,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
  * Eklenti çökerse `deactivate` koşmaz ve süreçler öksüz kalır.
  * Açılışta ölü pencerelerin bıraktığı süreç grupları kapatılır.
  */
-function reapOrphans(): void {
+async function reapOrphans(): Promise<void> {
     const orphans = registry.takeOrphans();
     let killed = 0;
 
     for (const orphan of orphans) {
-        try {
-            process.kill(-orphan.pid, 'SIGTERM');
+        if (await killOrphan(orphan.pid)) {
             killed += 1;
-        } catch {
         }
     }
 
@@ -439,7 +438,12 @@ async function focusWindow(node: ProjectNode): Promise<void> {
     }
 
     if (node.windowId) {
-        await vscode.env.openExternal(vscode.Uri.parse(`vscode://file${node.state.folderPath}`));
+        // `vscode://file/<yol>`: Uri.file yolu her platformda `/c:/…` biçimine çevirir.
+        const folder = vscode.Uri.file(node.state.folderPath);
+
+        await vscode.env.openExternal(
+            vscode.Uri.from({ scheme: vscode.env.uriScheme, authority: 'file', path: folder.path }),
+        );
 
         return;
     }

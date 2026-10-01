@@ -1,8 +1,9 @@
-import { type ChildProcess, spawn } from 'child_process';
+import type { ChildProcess } from 'child_process';
 import * as path from 'path';
 import * as vscode from 'vscode';
 
 import { findFreePort, isPortServed, portFromUrl } from './ports';
+import { killTree, spawnShell } from './process';
 import type { ProjectIssue, ProjectState } from './registry';
 import {
     buildCommand,
@@ -71,7 +72,7 @@ export function targetFromPath(folderPath: string, name?: string): Target {
  * Dev sunucularını arka plan süreci olarak koşturur — terminal sekmesi açmaz.
  * Çıktı proje başına bir Output kanalına yazılır.
  *
- * Süreçler kendi süreç grubunda başlatılır (`detached`), böylece durdururken
+ * Süreç ağacı birlikte kapatılır (bkz. `process.ts`), böylece durdururken
  * `npm` değil altındaki `vite` de kapanır. Pencere kapanınca hepsi öldürülür.
  */
 export class DevRunner {
@@ -189,12 +190,7 @@ export class DevRunner {
         channel.appendLine(`  ${target.path}`);
         channel.appendLine('');
 
-        const child = spawn(process.env.SHELL ?? '/bin/zsh', ['-lc', command], {
-            cwd: target.path,
-            detached: true,
-            stdio: ['ignore', 'pipe', 'pipe'],
-            env: { ...process.env, FORCE_COLOR: '0' },
-        });
+        const child = spawnShell(command, target.path);
 
         const run: Run = {
             child,
@@ -590,13 +586,13 @@ export class DevRunner {
             return;
         }
 
+        if (killTree(pid, signal)) {
+            return;
+        }
+
         try {
-            process.kill(-pid, signal);
+            run.child.kill(signal);
         } catch {
-            try {
-                run.child.kill(signal);
-            } catch {
-            }
         }
     }
 

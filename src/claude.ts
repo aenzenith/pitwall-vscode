@@ -33,6 +33,13 @@ type CachedFile = {
 };
 
 const ASKING_TOOLS = new Set(['AskUserQuestion', 'ExitPlanMode']);
+
+/**
+ * Windows'ta yollar büyük/küçük harf duyarsızdır ve VS Code sürücü harfini
+ * küçük verir (`c:\…`), Claude ise büyük yazar (`C:\…`). Karşılaştırma bu
+ * biçimde yapılır.
+ */
+const foldCase = process.platform === 'win32' ? (value: string): string => value.toLowerCase() : (value: string): string => value;
 const TAIL_START = 64 * 1024;
 const TAIL_MAX = 4 * 1024 * 1024;
 
@@ -170,20 +177,22 @@ export class ClaudeWatch extends EventEmitter {
     }
 
     private newestTurn(folderPath: string, dirs: string[], baseline: number): ClaudeTurn | undefined {
-        const encoded = encodeProjectPath(folderPath);
+        const encoded = foldCase(encodeProjectPath(folderPath));
+        const inside = foldCase(folderPath + path.sep);
         let newest: ClaudeTurn | undefined;
 
         for (const dir of dirs) {
-            const exact = dir === encoded;
+            const name = foldCase(dir);
+            const exact = name === encoded;
 
             // Alt klasörde açılan oturumlar `<proje>-alt` adını alır; `pitwall-docs`
             // gibi komşu projeyle karışmasın diye kayıttaki cwd ile doğrulanır.
-            if (!exact && !dir.startsWith(`${encoded}-`)) {
+            if (!exact && !name.startsWith(`${encoded}-`)) {
                 continue;
             }
 
             for (const verdict of this.verdictsIn(path.join(this.root, dir), baseline)) {
-                if (!exact && !verdict.cwd?.startsWith(`${folderPath}/`)) {
+                if (!exact && !(verdict.cwd && foldCase(verdict.cwd).startsWith(inside))) {
                     continue;
                 }
 

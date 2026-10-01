@@ -142,10 +142,17 @@ export function pickFolder<T extends FolderLike>(
     return undefined;
 }
 
+/** Ayırıcı her iki biçimde de kabul edilir: Windows yolları `\` kullanır. */
 function isInside(filePath: string, folderPath: string): boolean {
-    const root = folderPath.endsWith('/') ? folderPath : `${folderPath}/`;
+    if (filePath === folderPath) {
+        return true;
+    }
 
-    return filePath === folderPath || filePath.startsWith(root);
+    if (!filePath.startsWith(folderPath)) {
+        return false;
+    }
+
+    return /[\\/]$/.test(folderPath) || /[\\/]/.test(filePath[folderPath.length]);
 }
 
 /** ANSI renk kodları — vite çıktısı bunlarla dolu. ESC baytı kaynakta görünmez,
