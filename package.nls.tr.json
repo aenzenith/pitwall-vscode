@@ -20,6 +20,7 @@
     "command.focusWindow": "Penceresine geç",
     "command.toggleFavorite": "Favorilere ekle",
     "command.removeFavorite": "Favorilerden çıkar",
+    "command.showClaudePending": "Claude'un beklediği projeleri göster",
     "config.script": "Çalıştırılacak npm script adı. `build` ile başlayan adlar reddedilir.",
     "config.packageManager": "Paket yöneticisi. auto = lock dosyasından bulunur.",
     "config.port": "Projenin istediği port. `0` = otomatik: `vite.config` içindeki `server.port`, o da yoksa 5173. Port doluysa üstündeki ilk boş port kullanılır.",

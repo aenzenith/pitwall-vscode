@@ -1,11 +1,15 @@
 import * as path from 'path';
 import * as vscode from 'vscode';
 
+import type { ClaudeWatch } from './claude';
 import { ownedProjects, type Favorite, type ProjectState, type Registry } from './registry';
 import type { DevRunner, Target } from './runner';
 import { targetFromFolder, targetFromPath } from './runner';
 
 type Scope = 'local' | 'favorite' | 'remote';
+
+/** Bakılmamış Claude işi işareti: yeşil durum noktasından küçük, turuncu. */
+export const CLAUDE_DOT = '🔸';
 
 export type ProjectNode = {
     kind: 'project';
@@ -37,6 +41,7 @@ export class DevTree implements vscode.TreeDataProvider<Node> {
     public constructor(
         private readonly runner: DevRunner,
         private readonly registry: Registry,
+        private readonly claude: ClaudeWatch,
     ) {}
 
     public refresh(): void {
@@ -219,12 +224,11 @@ export class DevTree implements vscode.TreeDataProvider<Node> {
         return item;
     }
 
+    /** Bakılmamış Claude işi varsa açıklamanın başına, yani adın hemen yanına turuncu nokta konur. */
     private describe(node: ProjectNode, busy: boolean): string {
-        if (busy) {
-            return vscode.l10n.t('restarting…');
-        }
+        const text = busy ? vscode.l10n.t('restarting…') : (node.state.issue?.text ?? windowLabel(node));
 
-        return node.state.issue?.text ?? windowLabel(node);
+        return this.claude.pendingFor(node.state.folderPath) ? `${CLAUDE_DOT} ${text}`.trimEnd() : text;
     }
 
     private tooltip(node: ProjectNode): vscode.MarkdownString {
@@ -232,6 +236,19 @@ export class DevTree implements vscode.TreeDataProvider<Node> {
 
         if (node.state.issue) {
             lines.push('', `**${node.state.issue.text}**`, '', vscode.l10n.t('Open the output for details.'));
+        }
+
+        const turn = this.claude.pendingFor(node.state.folderPath);
+
+        if (turn) {
+            const time = new Date(turn.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+            lines.push(
+                '',
+                turn.kind === 'asking'
+                    ? vscode.l10n.t('{0} Claude asked a question at {1} — waiting for your answer.', CLAUDE_DOT, time)
+                    : vscode.l10n.t('{0} Claude finished at {1} — not looked at yet.', CLAUDE_DOT, time),
+            );
         }
 
         if (node.state.url) {

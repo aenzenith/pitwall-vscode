@@ -10,7 +10,7 @@ pencereleri tek panelde.
 │ Bu pencere                             │
 │  ● paddock                             │
 │ Favoriler                              │
-│  ● telemetry-api                       │
+│  ● telemetry-api 🔸                    │
 │  ⊘ garage-admin                        │
 │  ○ pitlane-docs                        │
 │  ⊘ apex-cms                            │
@@ -20,7 +20,8 @@ pencereleri tek panelde.
 ```
 
 Durum ikonda: `●` çalışıyor · `○` durdu · `⊘` penceresi kapalı favori. Satırda yalnız
-klasör adı yazar; pencere adı ancak klasör adından farklıysa eklenir.
+klasör adı yazar; pencere adı ancak klasör adından farklıysa eklenir. Adın yanındaki küçük
+`🔸`, Claude'un orada seni beklediğini gösterir.
 
 ## Panel
 
@@ -34,6 +35,25 @@ Pencereler ortak bir dizin üzerinden haberleşir (eklentinin globalStorage'ı):
 5 sn'de bir durumunu ve kök klasörlerini yazar, iş emirleri dosya olarak bırakılır. 20 sn ses
 çıkarmayan pencere listeden düşer. Bir projeyi yalnız kökünde tutan ya da orada çalıştıran
 pencere sahiplenir; favoriler ortak listedir, kimsenin penceresine yazılmaz.
+
+## Claude oturumları
+
+Birçok projede Claude'a iş verip başka işe geçersin; sonuç geldi mi diye bakmayı unutmamak
+için. Pitwall paneldeki her projenin Claude Code oturum kayıtlarını (`~/.claude/projects`)
+okur — CLI ve VS Code oturumları, alt klasörde açılanlar dahil.
+
+- **Adın yanında `🔸`** — Claude turu bitirdi ya da soru sordu (`AskUserQuestion`, plan
+  onayı) ve henüz bakmadın. Hangisi olduğu ve saati tooltip'te yazar. Claude hâlâ
+  çalışıyorsa işaret yok.
+- **Silinir**: o projenin penceresi odak alınca, ya da satıra veya rozete tıklayınca.
+  Baktığın pencerede biten iş hiç işaretlenmez.
+- **Durum çubuğunda `🔸 2`** — bekleyen proje sayısı. Tıklayınca projeye gider; birden
+  fazlaysa hangisi diye sorar.
+- Penceresi kapalı favorilerde de çalışır. "Görüldü" bilgisi bütün pencerelerde ortaktır;
+  özelliğin ilk açılışından eski işler görülmüş sayılır.
+
+Yakalanmayan: izin istemleri (Claude Code bunları kayda yazmıyor). Kayıt formatı resmi bir
+API değil; bir Claude Code güncellemesi algılamayı bozabilir.
 
 ## Özellikler
 

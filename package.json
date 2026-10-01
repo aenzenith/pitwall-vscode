@@ -155,6 +155,11 @@
                 "command": "pitwall.removeFavorite",
                 "title": "%command.removeFavorite%",
                 "icon": "$(star-full)"
+            },
+            {
+                "command": "pitwall.showClaudePending",
+                "title": "%command.showClaudePending%",
+                "category": "%category%"
             }
         ],
         "menus": {

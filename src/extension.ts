@@ -1,9 +1,10 @@
 import * as vscode from 'vscode';
 
+import { ClaudeWatch } from './claude';
 import { hasScript, pickFolder } from './resolve';
 import { ownedProjects, Registry, type RemoteCommand } from './registry';
 import { DevRunner, type Target, targetFromFolder, targetFromPath } from './runner';
-import { DevTree, favoriteOf, type ProjectNode } from './tree';
+import { CLAUDE_DOT, DevTree, favoriteOf, type ProjectNode } from './tree';
 
 const LAST_FOLDER_KEY = 'pitwall.lastFolderPath';
 const LAST_RUNNING_KEY = 'pitwall.lastRunning';
@@ -14,6 +15,8 @@ let tree: DevTree;
 let statusItem: vscode.StatusBarItem;
 let restartItem: vscode.StatusBarItem;
 let countItem: vscode.StatusBarItem;
+let claudeItem: vscode.StatusBarItem;
+let claude: ClaudeWatch;
 let state: vscode.Memento;
 
 /** folderPath|script -> script var mı. package.json değişince temizlenir. */
@@ -25,7 +28,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     state = context.workspaceState;
     registry = new Registry(context.globalStorageUri.fsPath, vscode.workspace.name ?? 'VSCode');
     runner = new DevRunner(() => void sync());
-    tree = new DevTree(runner, registry);
+    claude = new ClaudeWatch(context.globalStorageUri.fsPath);
+    tree = new DevTree(runner, registry, claude);
 
     statusItem = vscode.window.createStatusBarItem('pitwall.main', vscode.StatusBarAlignment.Left, 100);
     statusItem.command = 'pitwall.toggle';
@@ -38,6 +42,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     countItem = vscode.window.createStatusBarItem('pitwall.count', vscode.StatusBarAlignment.Left, 101);
     countItem.command = 'pitwall.focusView';
 
+    claudeItem = vscode.window.createStatusBarItem('pitwall.claude', vscode.StatusBarAlignment.Left, 102);
+    claudeItem.command = 'pitwall.showClaudePending';
+
     const packageJsonWatcher = vscode.workspace.createFileSystemWatcher('**/package.json');
     const onPackageJsonChange = (): void => {
         scriptCache.clear();
@@ -45,12 +52,17 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     };
 
     registry.on('changed', () => tree.refresh());
+    claude.on('changed', () => {
+        tree.refresh();
+        drawClaudeItem();
+    });
     registry.on('command', (command: RemoteCommand) => void handleRemoteCommand(command));
 
     context.subscriptions.push(
         statusItem,
         restartItem,
         countItem,
+        claudeItem,
         runner,
         tree,
         { dispose: () => registry.dispose() },
@@ -60,6 +72,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         packageJsonWatcher.onDidCreate(onPackageJsonChange),
         packageJsonWatcher.onDidDelete(onPackageJsonChange),
         vscode.window.onDidChangeActiveTextEditor(() => void sync()),
+        vscode.window.onDidChangeWindowState(() => scanClaude()),
         vscode.workspace.onDidChangeWorkspaceFolders(() => void sync()),
         vscode.workspace.onDidChangeConfiguration((event) => {
             if (event.affectsConfiguration('pitwall')) {
@@ -82,6 +95,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         vscode.commands.registerCommand('pitwall.restartNode', (node: ProjectNode) => void act(node, 'restart')),
         vscode.commands.registerCommand('pitwall.openUrl', (node: ProjectNode) => void openNodeUrl(node)),
         vscode.commands.registerCommand('pitwall.focusWindow', (node: ProjectNode) => void focusWindow(node)),
+        vscode.commands.registerCommand('pitwall.showClaudePending', () => void showClaudePending()),
         vscode.commands.registerCommand('pitwall.toggleFavorite', (node: ProjectNode) => toggleFavorite(node)),
         vscode.commands.registerCommand('pitwall.removeFavorite', (node: ProjectNode) => toggleFavorite(node)),
         vscode.commands.registerCommand('pitwall.addFavorite', () => void addFavorite()),
@@ -90,10 +104,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         ),
     );
 
-    const ticker = setInterval(() => tree.refresh(), 5000);
+    const ticker = setInterval(() => {
+        tree.refresh();
+        scanClaude();
+    }, 5000);
     context.subscriptions.push({ dispose: () => clearInterval(ticker) });
 
     reapOrphans();
+    scanClaude();
     await sync();
     await autoStart();
 }
@@ -226,6 +244,76 @@ function hideMain(): void {
     restartItem.hide();
 }
 
+/* ---------- Claude oturumları ---------- */
+
+/**
+ * Paneldeki projelerin Claude oturumlarını tarar. Odaktaki pencerenin kendi
+ * köklerinde biten iş görülmüş sayılır; işaret yalnız bakılmayan yerlerde çıkar.
+ */
+function scanClaude(): void {
+    const lookingAt = vscode.window.state.focused ? tree.localTargets().map((target) => target.path) : [];
+
+    claude.scan(
+        tree.allNodes().map((node) => node.state.folderPath),
+        lookingAt,
+    );
+}
+
+function drawClaudeItem(): void {
+    const names = claudePendingNodes().map((node) => node.state.name);
+
+    if (names.length === 0) {
+        claudeItem.hide();
+
+        return;
+    }
+
+    claudeItem.text = `${CLAUDE_DOT} ${names.length}`;
+    claudeItem.tooltip = vscode.l10n.t('Claude is waiting in: {0}', names.join(', '));
+    claudeItem.show();
+}
+
+function claudePendingNodes(): ProjectNode[] {
+    const pending = new Set(claude.pendingPaths());
+    const seen = new Set<string>();
+
+    return tree.allNodes().filter((node) => {
+        const folderPath = node.state.folderPath;
+
+        if (!pending.has(folderPath) || seen.has(folderPath)) {
+            return false;
+        }
+
+        seen.add(folderPath);
+
+        return true;
+    });
+}
+
+/** Durum çubuğu rozeti: tek iş varsa doğrudan penceresine, birden fazlaysa seçtirir. */
+async function showClaudePending(): Promise<void> {
+    const nodes = claudePendingNodes();
+
+    if (nodes.length === 0) {
+        return;
+    }
+
+    if (nodes.length === 1) {
+        await focusWindow(nodes[0]);
+
+        return;
+    }
+
+    const picked = await vscode.window.showQuickPick(
+        nodes.map((node) => ({ label: node.state.name, description: node.state.folderPath, node })),
+        { placeHolder: vscode.l10n.t('Which project should open?') },
+    );
+
+    if (picked) {
+        await focusWindow(picked.node);
+    }
+}
+
 /* ---------- otomatik başlatma ---------- */
 
 /**
@@ -341,6 +429,8 @@ async function openNodeUrl(node: ProjectNode): Promise<void> {
  * hiç açık değilse yeni pencerede açar.
  */
 async function focusWindow(node: ProjectNode): Promise<void> {
+    claude.markSeen(node.state.folderPath);
+
     const local = tree.localTargets().some((target) => target.path === node.state.folderPath);
 
     if (local) {

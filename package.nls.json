@@ -19,6 +19,7 @@
     "command.focusWindow": "Go to its window",
     "command.toggleFavorite": "Add to favourites",
     "command.removeFavorite": "Remove from favourites",
+    "command.showClaudePending": "Show projects where Claude is waiting",
     "category": "Pitwall",
     "config.script": "npm script to run. Names starting with `build` are rejected.",
     "config.packageManager": "Package manager. auto = detected from the lock file.",

@@ -4,6 +4,16 @@ All notable changes to this extension are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- Claude Code sessions are tracked per project. When Claude finishes a turn, or asks a
+  question, in a project whose window you are not looking at, a small orange 🔸 appears next
+  to its name. It clears once that project's window gets focus or you click the row.
+- A status bar badge (`🔸 2`) counts the projects waiting on you; clicking it jumps to the
+  project, or asks which one when there are several.
+
 ## [0.10.0] — 2026-09-24
 
 ### Changed
