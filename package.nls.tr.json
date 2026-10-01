@@ -1,5 +1,5 @@
 {
-    "extension.description": "Proje pencereleri arasında geç, npm dev sunucularını çalıştır — bütün açık VS Code pencereleri tek panelde.",
+    "extension.description": "Proje pencereleri arasında geç, npm dev sunucularını çalıştır — bütün açık VS Code pencereleri tek panelde; Claude seni beklediğinde bir nokta.",
     "container.title": "Pitwall",
     "view.name": "npm dev",
     "category": "Pitwall",

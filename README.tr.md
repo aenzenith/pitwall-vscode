@@ -1,129 +1,111 @@
 # Pitwall
 
-Proje pencereleri arasında geç, npm dev sunucularını çalıştır — bütün açık VS Code
-pencereleri tek panelde.
+*Açık her VS Code penceresi, dev sunucusu ve Claude oturumu — tek panelde.*
 
 *[English](README.md)*
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="media/panel-dark.png">
-  <img src="media/panel-light.png" width="380" alt="Pitwall paneli">
-</picture>
-
-Durum ikonda: `●` çalışıyor · `○` durdu · `⊘` penceresi kapalı favori. Satırda yalnız
-klasör adı yazar; pencere adı ancak klasör adından farklıysa eklenir. İkonun köşesindeki
-küçük turuncu `•`, Claude'un orada seni beklediğini gösterir.
-
-## Panel
-
-- **Bu pencere** — workspace'in kök klasörleri.
-- **Favoriler** — ★ işaretlediklerin. Penceresi kapalıyken de listede durur; başlatırsan
-  bu pencerenin terminalinde çalışır.
-- **Başka pencereler** — o an açık diğer VSCode pencerelerinin projeleri. Oradaki sunucu
-  buradan durdurulur/başlatılır; `↗` ile o pencereye geçilir.
-
-Pencereler ortak bir dizin üzerinden haberleşir (eklentinin globalStorage'ı): her pencere
-5 sn'de bir durumunu ve kök klasörlerini yazar, iş emirleri dosya olarak bırakılır. 20 sn ses
-çıkarmayan pencere listeden düşer. Bir projeyi yalnız kökünde tutan ya da orada çalıştıran
-pencere sahiplenir; favoriler ortak listedir, kimsenin penceresine yazılmaz.
-
-## Claude oturumları
-
-Birçok projede Claude'a iş verip başka işe geçersin; sonuç geldi mi diye bakmayı unutmamak
-için. Pitwall paneldeki her projenin Claude Code oturum kayıtlarını (`~/.claude/projects`)
-okur — CLI ve VS Code oturumları, alt klasörde açılanlar dahil.
-
-- **İkonun köşesinde turuncu `•`** — Claude turu bitirdi ya da soru sordu (`AskUserQuestion`, plan
-  onayı) ve henüz bakmadın. Hangisi olduğu ve saati tooltip'te yazar. Claude hâlâ
-  çalışıyorsa işaret yok.
-- **Silinir**: o projenin penceresi odak alınca, ya da satıra veya rozete tıklayınca.
-  Baktığın pencerede biten iş hiç işaretlenmez.
-- **Durum çubuğunda turuncu `• 2`** — bekleyen proje sayısı. Tıklayınca projeye gider; birden
-  fazlaysa hangisi diye sorar.
-- Penceresi kapalı favorilerde de çalışır. "Görüldü" bilgisi bütün pencerelerde ortaktır;
-  özelliğin ilk açılışından eski işler görülmüş sayılır.
-
-Yakalanmayan: izin istemleri (Claude Code bunları kayda yazmıyor). Kayıt formatı resmi bir
-API değil; bir Claude Code güncellemesi algılamayı bozabilir.
+<img src="media/panel-dark.png" width="380" alt="Pitwall paneli">
 
 ## Özellikler
 
-- **Start / stop / reload** — satır içi düğmeler ya da durum çubuğu (`⌘⌥D`, `⌘⌥R`).
-- **Panel başlığı üç düğme** — `▷` listedeki durmuş her projeyi başlatır, `■` çalışan her
-  projeyi durdurur, `⟳` çalışanların hepsini yeniden başlatır. Üçü de bütün pencereleri
-  kapsar; başka pencerenin projesi için iş emri o pencereye gider. Aralarında 1 sn bekleme
-  var, portlar yarışmasın.
-- **Çalışan sayısı** — durum çubuğunda `▶ 3` (bütün pencereler toplamı), grup başlığında
-  `3 çalışıyor`. Hiçbiri çalışmıyorsa rozet görünmez.
-- **Boş port garantisi — sessiz.** Başlamadan önce hedef port yoklanır; doluysa üstündeki ilk
-  boş porta geçilir (`npm run dev -- --port 5176`). Uyarı yok, satırda işaret yok, soru yok.
-  Hedef port: `pitwall.port` → `vite.config` içindeki `server.port` → 5173. Aynı anda birden
-  çok sunucu kalkarken dağıtılan portlar 60 sn boyunca rezerve tutulur — sunucu henüz dinlemeye
-  başlamadığı için ikinci sunucuya aynı port verilmez. Yine de `EADDRINUSE` gelirse proje başına
-  bir kez sessizce boş porta taşınır.
-- **Otomatik başlat** — pencere açılınca. `pitwall.autoStart`: `lastSession` (varsayılan),
-  `favorites`, `workspace`, `off`. Aynı projeyi başka pencere çalıştırıyorsa atlanır;
-  başlatmalar arasında 1,5 sn bekleme var.
-- **Adres düğmesi** — çalışan satırdaki `↗` tarayıcıda açar. Sıra kesin: `pitwall.url` →
-  `.env` içindeki `APP_URL` → Laravel projesinde `https://<klasör>.test` → **son çare**
-  sunucunun bastığı adres. Vite adresi uygulamanın adresi değildir, ona düşülmez.
-  Kendiliğinden açılmaz; isteyen `pitwall.openUrlOnStart` ile açar.
-- **Satıra tıklamak** projenin penceresine götürür (dev çalışsın çalışmasın): pencere açıksa
-  öne gelir, kapalıysa proje **yeni pencerede** açılır — bu pencerenin üstüne açılmaz.
-  Başlatan tek şey `▶` düğmesi.
-- **Terminal sekmesi açılmaz.** Sunucular arka plan süreci olarak koşar; çıktı proje başına
-  bir Output kanalına (`Dev: paddock`) yazılır, satırdaki `⎙` düğmesiyle açılır. Süreçler
-  kendi süreç grubunda başlar, durdurulurken `npm`'in altındaki `vite` de kapanır.
-  Pencere kapanınca hepsi öldürülür — öksüz sunucu kalmaz.
-- **Çökme algısı ve otomatik yeniden başlatma** — süreç kendi kendine düşerse (çıkış kodu
-  fark etmez, bilerek durdurma sayılmaz) satır kırmızıya döner ve sunucu 3 sn sonra geri
-  kaldırılır. Kaç kez çökerse çöksün geri gelir; yalnız art arda üç yeniden başlatma 60 sn
-  içinde ölürse vazgeçilir (`çöktü — … · 3 denemeden sonra vazgeçildi`). Elle başlatmak
-  sayacı sıfırlar.
-- **Sağlık yoklaması** — her 30 sn'de çalışan her sunucunun portu yoklanır (IPv4 ve IPv6
-  loopback). Süreç ayakta ama port cevap vermiyorsa satır sarıya döner (`:5173 yanıt
-  vermiyor`); 3 sn sonra hâlâ sessizse süreç öldürülüp yeniden başlatılır, aynı üç deneme
-  kuralıyla.
-- **Hata satırı satırda** — çıktıda `Failed to resolve`, `Cannot find module`, `SyntaxError`,
-  `npm ERR!` gibi bir satır görülürse satırın yanına kısaltılıp yazılır; çıktıya `⎙` düğmesiyle gidilir.
-- **Öksüz süreç temizliği** — eklenti çökerse `deactivate` koşmaz. Her pencere pid'lerini
-  ortak `pids/` dizinine yazar; sonraki açılışta ölü pencerelerin bıraktığı süreç grupları
-  kapatılır.
-- **`build` script'leri çalıştırılmaz** — açık dev sunucusunu bozduğu için bilerek engelli.
-- Paket yöneticisi lock dosyasından bulunur (pnpm / yarn / bun / npm).
-- **Türkçe ve İngilizce** — arayüz VS Code'un görüntü diline uyar.
+- **Bütün projeler tek listede** — bu pencerenin klasörleri, favorilerin ve açık diğer VS Code pencerelerinin projeleri. Favoriler pencereleri kapalıyken de listede kalır; başlatırsan buradan çalışır.
+- **Pencereler arası geçiş** — satıra tıkla, o pencere öne gelsin. Hiçbir yerde açık olmayan proje yeni pencerede açılır. Tıklamak sunucu başlatmaz — bunu yalnız `▶` yapar.
+- **Terminal sekmesi olmadan dev sunucusu** — `npm run dev`'i satırdan, panel başlığından ya da durum çubuğundan başlat, durdur, yeniden başlat. Çıktı proje başına bir Output kanalına yazılır.
+- **Çalışan sayısı** — durum çubuğunda bütün pencerelerin toplamı `▶ 3`, her grup başlığında `3 çalışıyor`.
+- **Claude bitirdiğinde haberin olsun** — küçük turuncu nokta, başka bir projede Claude'un işi bitirdiğini ya da sana soru sorduğunu gösterir. [Ayrıntılar aşağıda](#claude-oturumları).
+- **Port kavgası yok** — port doluysa sıradaki boş port kullanılır. Soru sorulmaz.
+- **Kendini toparlayan sunucular** — çöken ya da yanıt vermeyen sunucu 3 sn sonra geri kalkar. Art arda üç başarısız denemeden sonra Pitwall vazgeçer.
+- **Hata satırda** — `Cannot find module`, `npm ERR!` gibi satırlar proje adının yanında görünür.
+- **Vite portunu değil, uygulamanı açar** — `↗`, `.env` içindeki `APP_URL`'i ya da Laravel projesinde `https://<klasör>.test` adresini açar.
+- **Otomatik başlat** — pencere açılınca çalışanları geri kaldırır; ya da favorileri, ya da bütün kök klasörleri.
+- **Öksüz süreç kalmaz** — pencere kapanınca sunucuları durur; çöken pencereden kalanlar bir sonraki açılışta temizlenir.
+- **`build` asla çalışmaz** — production build açık dev sunucusunu bozar.
+- macOS, Linux ve Windows. Türkçe ve İngilizce.
+
+### Durum ikonları
+
+| İkon | Anlamı |
+|---|---|
+| `●` | Çalışıyor |
+| `○` | Durdu |
+| `⊘` | Penceresi kapalı favori |
+| `⚠` | Port yanıt vermiyor |
+| `✕` | Çöktü |
+| ikonda turuncu `•` | Claude seni bekliyor |
+
+Satırda klasör adı yazar; pencere adı yalnız farklıysa eklenir.
+
+## Claude oturumları
+
+Birçok projede Claude'a iş ver, başka işe geç, dönmeyi unutma.
+
+- **Turuncu nokta**, bakmadığın bir pencerede Claude turu bitirince ya da soru sorunca (`AskUserQuestion`, plan onayı) çıkar. Hangisi olduğu ve saati tooltip'te yazar.
+- **Silinir**: o pencereye geçince ya da satıra tıklayınca.
+- **Durum çubuğu** bekleyen proje sayısını gösterir (`• 2`). Tıklayınca birine gider.
+- CLI ve VS Code oturumlarını, alt klasörde açılan oturumları ve penceresi kapalı favorileri kapsar.
+
+Yakalanmayan: izin istemleri — Claude Code bunları kayda yazmıyor. Kayıt formatı resmi bir API değil; bir Claude Code güncellemesi algılamayı bozabilir.
+
+> **Gizlilik:** Pitwall, Claude Code oturum kayıtlarının (`~/.claude/projects`) yalnız son satırlarını, yalnız senin makinende okur. Hiçbir yere bir şey gönderilmez, `~/.claude` içinde hiçbir şey değiştirilmez.
+
+## Komutlar
+
+| Komut | Kısayol |
+|---|---|
+| npm dev başlat/durdur | `⌘⌥D` · `Ctrl+Alt+D` |
+| npm dev yeniden başlat | `⌘⌥R` · `Ctrl+Alt+R` |
+| Listedeki hepsini başlat | |
+| Listedeki hepsini durdur | |
+| Çalışanların hepsini yeniden başlat | |
+| Favorilere klasör ekle | |
+| Claude'un beklediği projeleri göster | |
+
+Toplu komutlar bütün pencereleri kapsar; başka pencerenin projesi için iş o pencereye devredilir.
 
 ## Ayarlar
 
-| Anahtar | Varsayılan |
-|---|---|
-| `pitwall.script` | `dev` |
-| `pitwall.packageManager` | `auto` |
-| `pitwall.port` | `0` (otomatik) |
-| `pitwall.autoStart` | `lastSession` |
-| `pitwall.autoStartOpensUrl` | `false` |
-| `pitwall.openUrlOnStart` | `false` |
-| `pitwall.url` | `""` (otomatik) |
-| `pitwall.openUrlTimeoutMs` | `15000` |
-| `pitwall.revealTerminal` | `false` (çıktı kanalını öne getir) |
-| `pitwall.restartDelayMs` | `600` |
+| Ayar | Varsayılan | Açıklama |
+|---|---|---|
+| `pitwall.script` | `dev` | Çalıştırılacak npm script'i. `build` ile başlayanlar reddedilir. |
+| `pitwall.packageManager` | `auto` | `npm`, `pnpm`, `yarn` ya da `bun`. `auto` lock dosyasına bakar. |
+| `pitwall.port` | `0` | Kullanılacak port. `0` = `vite.config` içindeki `server.port`, yoksa 5173. |
+| `pitwall.autoStart` | `lastSession` | Pencere açılınca ne başlasın: `lastSession`, `favorites`, `workspace` ya da `off`. |
+| `pitwall.autoStartOpensUrl` | `false` | Otomatik başlatma da tarayıcı açsın. |
+| `pitwall.openUrlOnStart` | `false` | Sunucuyu başlatınca tarayıcıyı aç. |
+| `pitwall.url` | `""` | Açılacak sabit adres. Boşsa `APP_URL`, sonra `<klasör>.test`, sonra sunucunun adresi. |
+| `pitwall.openUrlTimeoutMs` | `15000` | Sunucu adres basmazsa bu süre sonunda bilinen adres açılır. |
+| `pitwall.revealTerminal` | `false` | Başlatınca çıktı kanalını öne getir. |
+| `pitwall.restartDelayMs` | `600` | Durdurma sinyali ile zorla kapatma arasındaki bekleme. |
+
+Çok köklü workspace'te her ayar klasör başına ayrı verilebilir.
+
+## Nasıl çalışır
+
+- **Pencereler durumu** eklentinin depolama klasörü üzerinden paylaşır. Her pencere 5 sn'de bir projelerini yazar; 20 sn ses vermeyen pencere listeden düşer.
+- **Toplu ve otomatik başlatmalar** arasında 1 sn ve 1,5 sn bekleme var, portlar yarışmasın; başka pencerede çalışan proje atlanır.
+- **Dağıtılan portlar** 60 sn tutulur; aynı anda kalkan iki sunucuya aynı port verilmez. `EADDRINUSE` gelirse proje bir kez boş porta taşınır.
+- **Sağlık yoklaması** her 30 sn'de çalışan sunucunun portuna IPv4 ve IPv6'dan bakar. 3 sn sonra hâlâ sessizse yeniden başlatılır.
+- **Durdurma** bütün süreç ağacını kapatır, `npm` altındaki `vite` de gider: macOS ve Linux'ta süreç grubu, Windows'ta `taskkill /T`.
+- **Öksüz temizliği** — her pencere pid'lerini kaydeder. pid'leri çabuk yeniden kullanan Windows'ta artık pid yalnız hâlâ `cmd.exe`'ye aitse kapatılır.
+- **Claude "görüldü" bilgisi**, Pitwall'un kendi deposunda proje başına bir zamandır. İlk açılıştan eski işler görülmüş sayılır.
+
+## Kurulum
+
+VS Code Marketplace'ten ya da [releases](https://github.com/aenzenith/pitwall/releases) sayfasındaki `.vsix` ile:
+
+```bash
+code --install-extension pitwall-<sürüm>.vsix
+```
 
 ## Geliştirme
 
 ```bash
 npm install
-npm test        # saf mantık testleri (vitest)
-npm run compile
+npm run typecheck
+npm test
 ```
 
-VSCode'da bu klasörü aç, **F5** — Extension Development Host açılır.
-
-## Kurulum
-
-```bash
-npm run package
-code --install-extension pitwall-0.7.1.vsix
-```
+VS Code'da **F5** ile Extension Development Host açılır. CI Linux, macOS ve Windows'ta koşar. Sürümleri [release-please](https://github.com/googleapis/release-please) Conventional Commits'ten çıkarır.
 
 ## Lisans
 
