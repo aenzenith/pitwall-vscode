@@ -1,9 +1,10 @@
+import * as path from 'path';
 import * as vscode from 'vscode';
 
 import { ClaudeWatch } from './claude';
 import { hasScript, pickFolder } from './resolve';
 import { killOrphan } from './process';
-import { adoptOldStorage } from './storage';
+import { adoptOldStorage, OLD_EXTENSION_ID, sharedDir } from './storage';
 import { ownedProjects, Registry, type RemoteCommand } from './registry';
 import { DevRunner, type Target, targetFromFolder, targetFromPath } from './runner';
 import { DevTree, favoriteOf, type ProjectNode } from './tree';
@@ -28,10 +29,14 @@ let refreshToken = 0;
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
     state = context.workspaceState;
-    adoptOldStorage(context.globalStorageUri.fsPath);
-    registry = new Registry(context.globalStorageUri.fsPath, vscode.workspace.name ?? 'VSCode');
+    const shared = sharedDir();
+    const ownStorage = context.globalStorageUri.fsPath;
+
+    // Eski yerler: bu kimliğin kendi deposu, sonra silinen `aenzenith.pitwall` kimliğininki.
+    adoptOldStorage(shared, [ownStorage, path.join(path.dirname(ownStorage), OLD_EXTENSION_ID)]);
+    registry = new Registry(shared, vscode.workspace.name ?? 'VSCode');
     runner = new DevRunner(() => void sync());
-    claude = new ClaudeWatch(context.globalStorageUri.fsPath);
+    claude = new ClaudeWatch(shared);
     tree = new DevTree(runner, registry, claude, context.extensionUri);
 
     statusItem = vscode.window.createStatusBarItem('pitwall.main', vscode.StatusBarAlignment.Left, 100);

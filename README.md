@@ -81,13 +81,13 @@ Every setting can be overridden per folder in a multi-root workspace.
 
 ## How it works
 
-- **Windows share state** through the extension's storage folder. Each window writes its projects every 5 s; a window silent for 20 s drops off the list.
+- **Windows share state** through `~/.pitwall/`, which VS Code, Cursor, VS Code Insiders and the Pitwall desktop app all read. Each window writes its projects every 5 s; a window silent for 20 s drops off the list.
 - **Bulk and auto starts** are spaced 1 s and 1.5 s apart so ports don't race; projects already running in another window are skipped.
 - **Ports** handed out are held for 60 s, so two servers starting together never get the same one. An `EADDRINUSE` moves the project to a free port once.
 - **Health probe** checks each running server's port every 30 s, on IPv4 and IPv6. Still silent 3 s later means a restart.
 - **Stopping** kills the whole process tree, so the `vite` under `npm` goes too: a process group on macOS and Linux, `taskkill /T` on Windows.
 - **Orphan cleanup** — each window records its pids. On Windows, where pids are reused quickly, a leftover pid is killed only while it still belongs to `cmd.exe`.
-- **Claude "seen" state** is a timestamp per project in Pitwall's own storage. Work older than the first run counts as seen.
+- **Claude "seen" state** is a timestamp per project in `~/.pitwall/`, shared by every window. Work older than the first run counts as seen.
 
 ## Install
 

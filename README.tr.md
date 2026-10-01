@@ -81,13 +81,13 @@ Toplu komutlar bütün pencereleri kapsar; başka pencerenin projesi için iş o
 
 ## Nasıl çalışır
 
-- **Pencereler durumu** eklentinin depolama klasörü üzerinden paylaşır. Her pencere 5 sn'de bir projelerini yazar; 20 sn ses vermeyen pencere listeden düşer.
+- **Pencereler durumu** `~/.pitwall/` üzerinden paylaşır; VS Code, Cursor, VS Code Insiders ve Pitwall masaüstü uygulaması aynı klasörü okur. Her pencere 5 sn'de bir projelerini yazar; 20 sn ses vermeyen pencere listeden düşer.
 - **Toplu ve otomatik başlatmalar** arasında 1 sn ve 1,5 sn bekleme var, portlar yarışmasın; başka pencerede çalışan proje atlanır.
 - **Dağıtılan portlar** 60 sn tutulur; aynı anda kalkan iki sunucuya aynı port verilmez. `EADDRINUSE` gelirse proje bir kez boş porta taşınır.
 - **Sağlık yoklaması** her 30 sn'de çalışan sunucunun portuna IPv4 ve IPv6'dan bakar. 3 sn sonra hâlâ sessizse yeniden başlatılır.
 - **Durdurma** bütün süreç ağacını kapatır, `npm` altındaki `vite` de gider: macOS ve Linux'ta süreç grubu, Windows'ta `taskkill /T`.
 - **Öksüz temizliği** — her pencere pid'lerini kaydeder. pid'leri çabuk yeniden kullanan Windows'ta artık pid yalnız hâlâ `cmd.exe`'ye aitse kapatılır.
-- **Claude "görüldü" bilgisi**, Pitwall'un kendi deposunda proje başına bir zamandır. İlk açılıştan eski işler görülmüş sayılır.
+- **Claude "görüldü" bilgisi**, `~/.pitwall/` içinde proje başına bir zamandır ve bütün pencerelerde ortaktır. İlk açılıştan eski işler görülmüş sayılır.
 
 ## Kurulum
 

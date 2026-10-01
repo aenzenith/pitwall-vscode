@@ -1,31 +1,51 @@
 import * as fs from 'fs';
+import * as os from 'os';
 import * as path from 'path';
 
 /** Eklentinin Marketplace'te silinmeden önceki kimliği; eski depolama klasörü bu adı taşır. */
-const OLD_EXTENSION_ID = 'aenzenith.pitwall';
+export const OLD_EXTENSION_ID = 'aenzenith.pitwall';
 
 /**
- * Kimlik `aenzenith.pitwall`'dan `aenzenith.pitwall-vscode`'a geçti; globalStorage
- * klasörü de değişti. Favoriler ve Claude "görüldü" kayıtları bir kez taşınır.
- * Yeni klasörde dosya varsa dokunulmaz. Pencere ve pid kayıtları geçicidir, taşınmaz.
+ * Pencereler arası ortak kayıt. VS Code'un kendi depolama klasörü yerine burada durur ki
+ * Pitwall masaüstü uygulaması, Cursor ve VS Code Insiders da aynı kaydı görsün.
+ * Biçimi: Pitwall uygulamasının `docs/PROTOCOL.md` dosyası.
  */
-export function adoptOldStorage(storageDir: string): void {
-    const oldDir = path.join(path.dirname(storageDir), OLD_EXTENSION_ID);
+export function sharedDir(): string {
+    return path.join(os.homedir(), '.pitwall');
+}
 
-    if (oldDir === storageDir) {
-        return;
-    }
-
+/**
+ * Favoriler ve Claude "görüldü" kayıtları eski klasörlerden bir kez taşınır: hedefte dosya
+ * yoksa, listede ilk bulunan kaynaktan kopyalanır. Hedefteki dosyaya hiç dokunulmaz.
+ * Pencere ve pid kayıtları geçicidir, taşınmaz.
+ */
+export function adoptOldStorage(targetDir: string, sourceDirs: readonly string[]): void {
     for (const file of ['favorites.json', 'claude-seen.json']) {
-        const from = path.join(oldDir, file);
-        const to = path.join(storageDir, file);
+        const to = path.join(targetDir, file);
 
         try {
-            if (fs.existsSync(from) && !fs.existsSync(to)) {
-                fs.mkdirSync(storageDir, { recursive: true });
+            if (fs.existsSync(to)) {
+                continue;
+            }
+
+            const from = sourceDirs.map((dir) => path.join(dir, file)).find((candidate) => fs.existsSync(candidate));
+
+            if (from) {
+                fs.mkdirSync(targetDir, { recursive: true });
                 fs.copyFileSync(from, to);
             }
         } catch {
         }
     }
+}
+
+/**
+ * Dosyayı önce geçici adla yazıp sonra yerine taşır. Kaydı başka süreçler de okuduğu için
+ * yarım yazılmış bir dosya hiç görünmez. Geçici ad `.json` ile bitmez; okuyucular onu atlar.
+ */
+export function writeAtomic(file: string, content: string): void {
+    const temp = `${file}.${process.pid}.tmp`;
+
+    fs.writeFileSync(temp, content, 'utf8');
+    fs.renameSync(temp, file);
 }

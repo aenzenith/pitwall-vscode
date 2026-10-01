@@ -2,6 +2,8 @@ import { EventEmitter } from 'events';
 import * as fs from 'fs';
 import * as path from 'path';
 
+import { writeAtomic } from './storage';
+
 /**
  * Satırda gösterilecek sorun notu.
  *
@@ -68,8 +70,8 @@ const STALE_MS = 20000;
 const COMMAND_TTL_MS = 30000;
 
 /**
- * Pencereler arası ortak defter. Eklentinin globalStorage dizinini kullanır:
- * aynı makinedeki her VSCode penceresi aynı dizini görür.
+ * Pencereler arası ortak defter, `~/.pitwall/` (bkz. `sharedDir`): aynı makinedeki her
+ * VS Code, Cursor ve Insiders penceresi ile Pitwall uygulaması aynı dizini görür.
  *
  * - `windows/<id>.json` — her pencerenin kendi durumu (kalp atışıyla tazelenir)
  * - `commands/<hedef>__<ts>.json` — başka pencereye iş emri
@@ -176,7 +178,7 @@ export class Registry extends EventEmitter {
         const file = path.join(this.commandsDir, `${command.target}__${Date.now()}-${Math.random().toString(36).slice(2, 8)}.json`);
 
         try {
-            fs.writeFileSync(file, JSON.stringify(payload), 'utf8');
+            writeAtomic(file, JSON.stringify(payload));
         } catch {
         }
     }
@@ -196,7 +198,7 @@ export class Registry extends EventEmitter {
                 return;
             }
 
-            fs.writeFileSync(file, JSON.stringify({ windowId: this.windowId, entries }), 'utf8');
+            writeAtomic(file, JSON.stringify({ windowId: this.windowId, entries }));
         } catch {
         }
     }
@@ -242,7 +244,7 @@ export class Registry extends EventEmitter {
             : [...current, favorite].sort((a, b) => a.name.localeCompare(b.name, 'tr'));
 
         try {
-            fs.writeFileSync(this.favoritesFile, JSON.stringify(next, null, 2), 'utf8');
+            writeAtomic(this.favoritesFile, JSON.stringify(next, null, 2));
         } catch {
             return exists;
         }
@@ -273,7 +275,7 @@ export class Registry extends EventEmitter {
         this.own.updatedAt = Date.now();
 
         try {
-            fs.writeFileSync(this.ownFile(), JSON.stringify(this.own), 'utf8');
+            writeAtomic(this.ownFile(), JSON.stringify(this.own));
         } catch {
         }
     }

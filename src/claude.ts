@@ -3,6 +3,8 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 
+import { writeAtomic } from './storage';
+
 /**
  * Claude oturumunun dikkat isteyen son hâli.
  *
@@ -20,7 +22,7 @@ export type TailVerdict = {
     cwd?: string;
 };
 
-type SeenBook = {
+export type SeenBook = {
     /** Özelliğin ilk açıldığı an; daha eski işler bakılmış sayılır. */
     since: number;
     paths: Record<string, number>;
@@ -263,13 +265,10 @@ export class ClaudeWatch extends EventEmitter {
     }
 
     private readSeen(): SeenBook {
-        try {
-            const book = JSON.parse(fs.readFileSync(this.seenFile, 'utf8')) as SeenBook;
+        const book = readSeenFile(this.seenFile);
 
-            if (typeof book.since === 'number' && book.paths && typeof book.paths === 'object') {
-                return book;
-            }
-        } catch {
+        if (book) {
+            return book;
         }
 
         const fresh: SeenBook = { since: Date.now(), paths: {} };
@@ -279,9 +278,13 @@ export class ClaudeWatch extends EventEmitter {
         return fresh;
     }
 
+    /**
+     * Kaydı başka pencereler ve Pitwall uygulaması da yazar. Okuduğumuzdan beri yazılmış
+     * olanı ezmemek için diskteki kayıtla birleştirilip yazılır.
+     */
     private writeSeen(book: SeenBook): void {
         try {
-            fs.writeFileSync(this.seenFile, JSON.stringify(book), 'utf8');
+            writeAtomic(this.seenFile, JSON.stringify(mergeSeen(readSeenFile(this.seenFile), book)));
         } catch {
         }
     }
@@ -324,6 +327,37 @@ function readFileTail(file: string, size: number): TailVerdict | undefined {
     } finally {
         fs.closeSync(fd);
     }
+}
+
+function readSeenFile(file: string): SeenBook | undefined {
+    try {
+        const book = JSON.parse(fs.readFileSync(file, 'utf8')) as SeenBook;
+
+        if (typeof book.since === 'number' && book.paths && typeof book.paths === 'object') {
+            return book;
+        }
+    } catch {
+    }
+
+    return undefined;
+}
+
+/**
+ * İki "görüldü" kaydını birleştirir: proje başına büyük zaman, başlangıç olarak küçük olan.
+ * Bir taraf geride kalsa bile kimsenin "baktım" bilgisi kaybolmaz.
+ */
+export function mergeSeen(disk: SeenBook | undefined, mine: SeenBook): SeenBook {
+    if (!disk) {
+        return mine;
+    }
+
+    const paths: Record<string, number> = { ...disk.paths };
+
+    for (const [folderPath, at] of Object.entries(mine.paths)) {
+        paths[folderPath] = Math.max(paths[folderPath] ?? 0, at);
+    }
+
+    return { since: Math.min(disk.since, mine.since), paths };
 }
 
 function sameTurns(a: Map<string, ClaudeTurn>, b: Map<string, ClaudeTurn>): boolean {
