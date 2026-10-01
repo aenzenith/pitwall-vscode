@@ -362,13 +362,14 @@
         "compile": "rm -rf out && tsc -p .",
         "watch": "tsc -p . --watch",
         "test": "vitest run",
+        "typecheck": "tsc --noEmit -p .",
         "package": "npx --yes @vscode/vsce package",
         "clean": "rm -rf out",
         "vscode:prepublish": "npm run compile"
     },
     "devDependencies": {
         "@types/node": "^22.10.0",
-        "@types/vscode": "^1.93.0",
+        "@types/vscode": "~1.93.0",
         "typescript": "^5.7.0",
         "vitest": "^3.0.0"
     },

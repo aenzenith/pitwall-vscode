@@ -7,3 +7,6 @@ tsconfig.json
 **/*.vsix
 npm-debug.log
 media/**
+.github/**
+release-please-config.json
+.release-please-manifest.json
