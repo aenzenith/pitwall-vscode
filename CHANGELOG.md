@@ -4,6 +4,13 @@ All notable changes to this extension are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and releases are cut
 by release-please from Conventional Commits.
 
+## [0.12.2](https://github.com/aenzenith/pitwall-vscode/compare/v0.12.1...v0.12.2) (2026-10-01)
+
+
+### Bug Fixes
+
+* **listing:** display name changed to Pitwall for VS Code ([8a35d9b](https://github.com/aenzenith/pitwall-vscode/commit/8a35d9bd7c92c362592283f1d9639e08424ef3bd))
+
 ## [0.12.1](https://github.com/aenzenith/pitwall-vscode/compare/v0.12.0...v0.12.1) (2026-10-01)
 
 
