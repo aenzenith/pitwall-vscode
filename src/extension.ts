@@ -3,6 +3,7 @@ import * as vscode from 'vscode';
 import { ClaudeWatch } from './claude';
 import { hasScript, pickFolder } from './resolve';
 import { killOrphan } from './process';
+import { adoptOldStorage } from './storage';
 import { ownedProjects, Registry, type RemoteCommand } from './registry';
 import { DevRunner, type Target, targetFromFolder, targetFromPath } from './runner';
 import { DevTree, favoriteOf, type ProjectNode } from './tree';
@@ -27,6 +28,7 @@ let refreshToken = 0;
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
     state = context.workspaceState;
+    adoptOldStorage(context.globalStorageUri.fsPath);
     registry = new Registry(context.globalStorageUri.fsPath, vscode.workspace.name ?? 'VSCode');
     runner = new DevRunner(() => void sync());
     claude = new ClaudeWatch(context.globalStorageUri.fsPath);

@@ -1,5 +1,5 @@
 {
-    "name": "pitwall",
+    "name": "pitwall-vscode",
     "displayName": "Pitwall",
     "description": "%extension.description%",
     "version": "0.12.0",
@@ -9,12 +9,12 @@
     "license": "MIT",
     "repository": {
         "type": "git",
-        "url": "https://github.com/aenzenith/pitwall.git"
+        "url": "https://github.com/aenzenith/pitwall-vscode.git"
     },
     "bugs": {
-        "url": "https://github.com/aenzenith/pitwall/issues"
+        "url": "https://github.com/aenzenith/pitwall-vscode/issues"
     },
-    "homepage": "https://github.com/aenzenith/pitwall#readme",
+    "homepage": "https://github.com/aenzenith/pitwall-vscode#readme",
     "engines": {
         "vscode": "^1.93.0"
     },

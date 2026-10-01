@@ -51,11 +51,11 @@ jobs:
         run: npm test
 
       - name: Package
-        run: npx --yes @vscode/vsce package --out "pitwall-${TAG#v}.vsix"
+        run: npx --yes @vscode/vsce package --out "pitwall-vscode-${TAG#v}.vsix"
 
       - name: Attach to release
-        run: gh release upload "$TAG" "pitwall-${TAG#v}.vsix" --clobber
+        run: gh release upload "$TAG" "pitwall-vscode-${TAG#v}.vsix" --clobber
 
       - name: Publish to Marketplace
         if: ${{ env.VSCE_PAT != '' }}
-        run: npx --yes @vscode/vsce publish --packagePath "pitwall-${TAG#v}.vsix"
+        run: npx --yes @vscode/vsce publish --packagePath "pitwall-vscode-${TAG#v}.vsix"

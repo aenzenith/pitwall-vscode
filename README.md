@@ -91,10 +91,10 @@ Every setting can be overridden per folder in a multi-root workspace.
 
 ## Install
 
-From the VS Code Marketplace, or grab a `.vsix` from [releases](https://github.com/aenzenith/pitwall/releases):
+From the VS Code Marketplace, or grab a `.vsix` from [releases](https://github.com/aenzenith/pitwall-vscode/releases):
 
 ```bash
-code --install-extension pitwall-<version>.vsix
+code --install-extension pitwall-vscode-<version>.vsix
 ```
 
 ## Development

@@ -91,10 +91,10 @@ Toplu komutlar bütün pencereleri kapsar; başka pencerenin projesi için iş o
 
 ## Kurulum
 
-VS Code Marketplace'ten ya da [releases](https://github.com/aenzenith/pitwall/releases) sayfasındaki `.vsix` ile:
+VS Code Marketplace'ten ya da [releases](https://github.com/aenzenith/pitwall-vscode/releases) sayfasındaki `.vsix` ile:
 
 ```bash
-code --install-extension pitwall-<sürüm>.vsix
+code --install-extension pitwall-vscode-<sürüm>.vsix
 ```
 
 ## Geliştirme
