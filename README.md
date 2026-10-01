@@ -4,22 +4,13 @@ Jump between project windows and run their npm dev servers — every open VS Cod
 
 *[Türkçe](README.tr.md)*
 
-```
-┌─ NPM DEV ─────────────── 3 running ───┐
-│ This window                            │
-│  ● paddock                             │
-│ Favourites                             │
-│  ● telemetry-api 🔸                    │
-│  ⊘ garage-admin                        │
-│  ○ pitlane-docs                        │
-│  ⊘ apex-cms                            │
-│ Other windows                          │
-│  ● gridwall.dev                        │
-└────────────────────────────────────────┘
-```
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="media/panel-dark.png">
+  <img src="media/panel-light.png" width="380" alt="Pitwall panel">
+</picture>
 
 State lives in the icon: `●` running · `○` stopped · `⊘` favourite whose window is closed.
-A small `🔸` after the name means Claude is waiting on you there.
+A small orange `•` on the icon's corner means Claude is waiting on you there.
 A row shows only the folder name; the window name is added when it differs.
 
 ## The panel
@@ -45,12 +36,12 @@ Hand work to Claude in several projects, go do something else, and still not for
 back. Pitwall reads Claude Code's session logs (`~/.claude/projects`) for every project in
 the panel — CLI and VS Code sessions alike, including ones started in a subfolder.
 
-- **`🔸` next to the name** — Claude finished a turn, or asked a question (`AskUserQuestion`,
+- **Orange `•` on the icon's corner** — Claude finished a turn, or asked a question (`AskUserQuestion`,
   plan approval), and you haven't looked yet. The tooltip says which and when. While Claude is
   still working, nothing is shown.
 - **It clears** when that project's window gets focus, or when you click the row or the badge.
   A turn that finishes in the window you are looking at is never flagged.
-- **`🔸 2` in the status bar** — how many projects are waiting. Click it to jump to the
+- **Orange `• 2` in the status bar** — how many projects are waiting. Click it to jump to the
   project; with several, it asks which one.
 - Works for favourites whose window is closed, too. Seen state is shared by every window;
   anything older than the first run counts as seen.

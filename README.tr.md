@@ -5,23 +5,14 @@ pencereleri tek panelde.
 
 *[English](README.md)*
 
-```
-┌─ NPM DEV ──────────────── 3 çalışıyor ─┐
-│ Bu pencere                             │
-│  ● paddock                             │
-│ Favoriler                              │
-│  ● telemetry-api 🔸                    │
-│  ⊘ garage-admin                        │
-│  ○ pitlane-docs                        │
-│  ⊘ apex-cms                            │
-│ Başka pencereler                       │
-│  ● gridwall.dev                        │
-└────────────────────────────────────────┘
-```
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="media/panel-dark.png">
+  <img src="media/panel-light.png" width="380" alt="Pitwall paneli">
+</picture>
 
 Durum ikonda: `●` çalışıyor · `○` durdu · `⊘` penceresi kapalı favori. Satırda yalnız
-klasör adı yazar; pencere adı ancak klasör adından farklıysa eklenir. Adın yanındaki küçük
-`🔸`, Claude'un orada seni beklediğini gösterir.
+klasör adı yazar; pencere adı ancak klasör adından farklıysa eklenir. İkonun köşesindeki
+küçük turuncu `•`, Claude'un orada seni beklediğini gösterir.
 
 ## Panel
 
@@ -42,12 +33,12 @@ Birçok projede Claude'a iş verip başka işe geçersin; sonuç geldi mi diye b
 için. Pitwall paneldeki her projenin Claude Code oturum kayıtlarını (`~/.claude/projects`)
 okur — CLI ve VS Code oturumları, alt klasörde açılanlar dahil.
 
-- **Adın yanında `🔸`** — Claude turu bitirdi ya da soru sordu (`AskUserQuestion`, plan
+- **İkonun köşesinde turuncu `•`** — Claude turu bitirdi ya da soru sordu (`AskUserQuestion`, plan
   onayı) ve henüz bakmadın. Hangisi olduğu ve saati tooltip'te yazar. Claude hâlâ
   çalışıyorsa işaret yok.
 - **Silinir**: o projenin penceresi odak alınca, ya da satıra veya rozete tıklayınca.
   Baktığın pencerede biten iş hiç işaretlenmez.
-- **Durum çubuğunda `🔸 2`** — bekleyen proje sayısı. Tıklayınca projeye gider; birden
+- **Durum çubuğunda turuncu `• 2`** — bekleyen proje sayısı. Tıklayınca projeye gider; birden
   fazlaysa hangisi diye sorar.
 - Penceresi kapalı favorilerde de çalışır. "Görüldü" bilgisi bütün pencerelerde ortaktır;
   özelliğin ilk açılışından eski işler görülmüş sayılır.

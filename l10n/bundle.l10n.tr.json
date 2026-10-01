@@ -30,8 +30,8 @@
     "Add to favourites": "Favorilere ekle",
     "Pitwall: no folder is open.": "Pitwall: açık bir klasör yok.",
     "Which project should the dev server start in?": "Dev sunucusu hangi projede başlasın?",
-    "{0} Claude asked a question at {1} — waiting for your answer.": "{0} Claude soru sordu ({1}) — cevabını bekliyor.",
-    "{0} Claude finished at {1} — not looked at yet.": "{0} Claude işi bitirdi ({1}) — henüz bakılmadı.",
+    "Claude asked a question at {0} — waiting for your answer.": "Claude soru sordu ({0}) — cevabını bekliyor.",
+    "Claude finished at {0} — not looked at yet.": "Claude işi bitirdi ({0}) — henüz bakılmadı.",
     "Claude is waiting in: {0}": "Claude şuralarda bekliyor: {0}",
     "Which project should open?": "Hangi proje açılsın?"
 }

@@ -4,6 +4,14 @@ All notable changes to this extension are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.1] — 2026-10-01
+
+### Changed
+
+- The Claude marker is now a small orange dot on the corner of the row's status icon, like a
+  notification badge, instead of a 🔸 after the name. The status bar badge is an orange
+  `• N`.
+
 ## [0.11.0] — 2026-10-01
 
 ### Added

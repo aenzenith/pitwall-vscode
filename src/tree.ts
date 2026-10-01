@@ -8,8 +8,15 @@ import { targetFromFolder, targetFromPath } from './runner';
 
 type Scope = 'local' | 'favorite' | 'remote';
 
-/** Bakılmamış Claude işi işareti: yeşil durum noktasından küçük, turuncu. */
-export const CLAUDE_DOT = '🔸';
+type IconState = 'running' | 'idle' | 'closed' | 'crashed' | 'issue';
+
+const THEME_ICONS: Record<IconState, () => vscode.ThemeIcon> = {
+    crashed: () => new vscode.ThemeIcon('error', new vscode.ThemeColor('testing.iconFailed')),
+    issue: () => new vscode.ThemeIcon('warning', new vscode.ThemeColor('list.warningForeground')),
+    running: () => new vscode.ThemeIcon('circle-filled', new vscode.ThemeColor('testing.iconPassed')),
+    closed: () => new vscode.ThemeIcon('circle-slash'),
+    idle: () => new vscode.ThemeIcon('circle-outline'),
+};
 
 export type ProjectNode = {
     kind: 'project';
@@ -42,6 +49,7 @@ export class DevTree implements vscode.TreeDataProvider<Node> {
         private readonly runner: DevRunner,
         private readonly registry: Registry,
         private readonly claude: ClaudeWatch,
+        private readonly extensionUri: vscode.Uri,
     ) {}
 
     public refresh(): void {
@@ -224,11 +232,12 @@ export class DevTree implements vscode.TreeDataProvider<Node> {
         return item;
     }
 
-    /** Bakılmamış Claude işi varsa açıklamanın başına, yani adın hemen yanına turuncu nokta konur. */
     private describe(node: ProjectNode, busy: boolean): string {
-        const text = busy ? vscode.l10n.t('restarting…') : (node.state.issue?.text ?? windowLabel(node));
+        if (busy) {
+            return vscode.l10n.t('restarting…');
+        }
 
-        return this.claude.pendingFor(node.state.folderPath) ? `${CLAUDE_DOT} ${text}`.trimEnd() : text;
+        return node.state.issue?.text ?? windowLabel(node);
     }
 
     private tooltip(node: ProjectNode): vscode.MarkdownString {
@@ -246,8 +255,8 @@ export class DevTree implements vscode.TreeDataProvider<Node> {
             lines.push(
                 '',
                 turn.kind === 'asking'
-                    ? vscode.l10n.t('{0} Claude asked a question at {1} — waiting for your answer.', CLAUDE_DOT, time)
-                    : vscode.l10n.t('{0} Claude finished at {1} — not looked at yet.', CLAUDE_DOT, time),
+                    ? vscode.l10n.t('Claude asked a question at {0} — waiting for your answer.', time)
+                    : vscode.l10n.t('Claude finished at {0} — not looked at yet.', time),
             );
         }
 
@@ -264,30 +273,27 @@ export class DevTree implements vscode.TreeDataProvider<Node> {
         return new vscode.MarkdownString(lines.join('\n'));
     }
 
-    private icon(node: ProjectNode, busy: boolean): vscode.ThemeIcon {
+    /**
+     * Bakılmamış Claude işi varsa durum ikonunun turuncu noktalı SVG eşi çizilir;
+     * ThemeIcon üstüne rozet koymanın API'si yok.
+     */
+    private icon(node: ProjectNode, busy: boolean): vscode.ThemeIcon | { light: vscode.Uri; dark: vscode.Uri } {
         if (busy) {
             return new vscode.ThemeIcon('sync~spin');
         }
 
-        const issue = node.state.issue;
+        const state = iconState(node);
 
-        if (issue?.kind === 'crashed') {
-            return new vscode.ThemeIcon('error', new vscode.ThemeColor('testing.iconFailed'));
+        if (!this.claude.pendingFor(node.state.folderPath)) {
+            return THEME_ICONS[state]();
         }
 
-        if (issue) {
-            return new vscode.ThemeIcon('warning', new vscode.ThemeColor('list.warningForeground'));
-        }
+        const dir = vscode.Uri.joinPath(this.extensionUri, 'resources', 'claude');
 
-        if (node.state.running) {
-            return new vscode.ThemeIcon('circle-filled', new vscode.ThemeColor('testing.iconPassed'));
-        }
-
-        if (node.scope === 'favorite' && !node.windowId) {
-            return new vscode.ThemeIcon('circle-slash');
-        }
-
-        return new vscode.ThemeIcon('circle-outline');
+        return {
+            light: vscode.Uri.joinPath(dir, `${state}-light.svg`),
+            dark: vscode.Uri.joinPath(dir, `${state}-dark.svg`),
+        };
     }
 
     /**
@@ -300,6 +306,24 @@ export class DevTree implements vscode.TreeDataProvider<Node> {
 
         return `project.${where}.${state}.${node.favorite ? 'fav' : 'nofav'}`;
     }
+}
+
+function iconState(node: ProjectNode): IconState {
+    const issue = node.state.issue;
+
+    if (issue?.kind === 'crashed') {
+        return 'crashed';
+    }
+
+    if (issue) {
+        return 'issue';
+    }
+
+    if (node.state.running) {
+        return 'running';
+    }
+
+    return node.scope === 'favorite' && !node.windowId ? 'closed' : 'idle';
 }
 
 /**

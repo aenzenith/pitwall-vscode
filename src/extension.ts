@@ -4,7 +4,7 @@ import { ClaudeWatch } from './claude';
 import { hasScript, pickFolder } from './resolve';
 import { ownedProjects, Registry, type RemoteCommand } from './registry';
 import { DevRunner, type Target, targetFromFolder, targetFromPath } from './runner';
-import { CLAUDE_DOT, DevTree, favoriteOf, type ProjectNode } from './tree';
+import { DevTree, favoriteOf, type ProjectNode } from './tree';
 
 const LAST_FOLDER_KEY = 'pitwall.lastFolderPath';
 const LAST_RUNNING_KEY = 'pitwall.lastRunning';
@@ -29,7 +29,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     registry = new Registry(context.globalStorageUri.fsPath, vscode.workspace.name ?? 'VSCode');
     runner = new DevRunner(() => void sync());
     claude = new ClaudeWatch(context.globalStorageUri.fsPath);
-    tree = new DevTree(runner, registry, claude);
+    tree = new DevTree(runner, registry, claude, context.extensionUri);
 
     statusItem = vscode.window.createStatusBarItem('pitwall.main', vscode.StatusBarAlignment.Left, 100);
     statusItem.command = 'pitwall.toggle';
@@ -44,6 +44,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
     claudeItem = vscode.window.createStatusBarItem('pitwall.claude', vscode.StatusBarAlignment.Left, 102);
     claudeItem.command = 'pitwall.showClaudePending';
+    claudeItem.color = new vscode.ThemeColor('charts.orange');
 
     const packageJsonWatcher = vscode.workspace.createFileSystemWatcher('**/package.json');
     const onPackageJsonChange = (): void => {
@@ -268,7 +269,7 @@ function drawClaudeItem(): void {
         return;
     }
 
-    claudeItem.text = `${CLAUDE_DOT} ${names.length}`;
+    claudeItem.text = `$(circle-small-filled) ${names.length}`;
     claudeItem.tooltip = vscode.l10n.t('Claude is waiting in: {0}', names.join(', '));
     claudeItem.show();
 }
