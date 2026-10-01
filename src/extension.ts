@@ -35,7 +35,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     // Eski yerler: bu kimliğin kendi deposu, sonra silinen `aenzenith.pitwall` kimliğininki.
     adoptOldStorage(shared, [ownStorage, path.join(path.dirname(ownStorage), OLD_EXTENSION_ID)]);
     registry = new Registry(shared, vscode.workspace.name ?? 'VSCode');
-    runner = new DevRunner(() => void sync());
+    runner = new DevRunner(() => void sync(), { dir: shared, windowId: registry.windowId });
     claude = new ClaudeWatch(shared);
     tree = new DevTree(runner, registry, claude, context.extensionUri);
 

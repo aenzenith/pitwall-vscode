@@ -25,6 +25,8 @@ export type ProjectState = {
     url?: string;
     startedAt?: number;
     issue?: ProjectIssue;
+    /** Çalışırken: çıktının yansıdığı dosya, kayıt klasörüne göre (`output/<windowId>/….log`). */
+    output?: string;
 };
 
 /** Bir VSCode penceresinin paylaştığı kayıt. */
@@ -88,6 +90,8 @@ export class Registry extends EventEmitter {
 
     private readonly pidsDir: string;
 
+    private readonly outputDir: string;
+
     private readonly watchers: fs.FSWatcher[] = [];
 
     private heartbeat?: ReturnType<typeof setInterval>;
@@ -104,6 +108,7 @@ export class Registry extends EventEmitter {
         this.commandsDir = path.join(storageDir, 'commands');
         this.favoritesFile = path.join(storageDir, 'favorites.json');
         this.pidsDir = path.join(storageDir, 'pids');
+        this.outputDir = path.join(storageDir, 'output');
         this.own = { windowId: this.windowId, title, updatedAt: Date.now(), projects: [], roots: [] };
 
         fs.mkdirSync(this.windowsDir, { recursive: true });
@@ -281,6 +286,7 @@ export class Registry extends EventEmitter {
 
         safeUnlink(this.ownFile());
         safeUnlink(path.join(this.pidsDir, `${this.windowId}.json`));
+        safeRemoveDir(path.join(this.outputDir, this.windowId));
     }
 
     private ownFile(): string {
@@ -296,7 +302,7 @@ export class Registry extends EventEmitter {
         }
     }
 
-    /** Ölü pencere kayıtlarını ve bayatlamış emirleri siler. */
+    /** Ölü pencere kayıtlarını, bayatlamış emirleri ve kaydı kalmamış katılımcıların çıktılarını siler. */
     private sweep(): void {
         const now = Date.now();
 
@@ -315,6 +321,19 @@ export class Registry extends EventEmitter {
 
             if (!command || now - command.issuedAt > COMMAND_TTL_MS) {
                 safeUnlink(full);
+            }
+        }
+
+        let owners: string[] = [];
+
+        try {
+            owners = fs.readdirSync(this.outputDir);
+        } catch {
+        }
+
+        for (const owner of owners) {
+            if (!fs.existsSync(path.join(this.windowsDir, `${owner}.json`))) {
+                safeRemoveDir(path.join(this.outputDir, owner));
             }
         }
     }
@@ -374,6 +393,13 @@ function readJson<T>(file: string): T | undefined {
         return JSON.parse(fs.readFileSync(file, 'utf8')) as T;
     } catch {
         return undefined;
+    }
+}
+
+function safeRemoveDir(dir: string): void {
+    try {
+        fs.rmSync(dir, { recursive: true, force: true });
+    } catch {
     }
 }
 

@@ -82,6 +82,7 @@ Every setting can be overridden per folder in a multi-root workspace.
 ## How it works
 
 - **Windows share state** through `~/.pitwall/`, which VS Code, Cursor, VS Code Insiders and the Pitwall desktop app all read. Each window writes its projects every 5 s; a window silent for 20 s drops off the list.
+- **Server output** is also mirrored to `~/.pitwall/output/` while the server runs, so the Pitwall desktop app shows it too. The file is capped at 1 MB and deleted when the server stops or the window closes.
 - **Bulk and auto starts** are spaced 1 s and 1.5 s apart so ports don't race; projects already running in another window are skipped.
 - **Ports** handed out are held for 60 s, so two servers starting together never get the same one. An `EADDRINUSE` moves the project to a free port once.
 - **Health probe** checks each running server's port every 30 s, on IPv4 and IPv6. Still silent 3 s later means a restart.

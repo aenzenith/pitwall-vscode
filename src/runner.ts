@@ -2,6 +2,7 @@ import type { ChildProcess } from 'child_process';
 import * as path from 'path';
 import * as vscode from 'vscode';
 
+import { OutputMirror, outputPath } from './output';
 import { findFreePort, isPortServed, portFromUrl } from './ports';
 import { killTree, spawnShell } from './process';
 import type { ProjectIssue, ProjectState } from './registry';
@@ -29,7 +30,11 @@ export type Target = {
 /** Arka planda koşan bir dev sunucusu. */
 type Run = {
     child: ChildProcess;
-    channel: vscode.OutputChannel;
+    /** Koşu boyunca yazılanlar Output kanalına ve paylaşılan dosyaya birlikte gider. */
+    channel: Pick<vscode.OutputChannel, 'append' | 'appendLine'>;
+    mirror?: OutputMirror;
+    /** Paylaşılan çıktı dosyası, kayıt klasörüne göre (bkz. `outputPath`). */
+    output?: string;
     startedAt: number;
     /** Çıktının son parçası: URL ve port çakışması burada aranır. */
     buffer: string;
@@ -104,7 +109,14 @@ export class DevRunner {
 
     private healthTimer?: ReturnType<typeof setInterval>;
 
-    public constructor(private readonly onChange: () => void) {
+    /**
+     * @param shared Çıktının paylaşılacağı kayıt klasörü ve bu pencerenin kimliği. Verilmezse
+     *   çıktı yalnız Output kanalına yazılır.
+     */
+    public constructor(
+        private readonly onChange: () => void,
+        private readonly shared?: { dir: string; windowId: string },
+    ) {
         this.healthTimer = setInterval(() => void this.checkHealth(), HEALTH_MS);
     }
 
@@ -143,6 +155,7 @@ export class DevRunner {
             url: run?.url,
             startedAt: run?.startedAt,
             issue: this.issues.get(target.path),
+            output: run?.output,
         };
     }
 
@@ -191,11 +204,27 @@ export class DevRunner {
         channel.appendLine('');
 
         const child = spawnShell(command, target.path);
+        const startedAt = Date.now();
+        const output = this.shared ? outputPath(this.shared.windowId, target.path, startedAt) : undefined;
+        const mirror = this.shared && output ? new OutputMirror(path.join(this.shared.dir, output)) : undefined;
+
+        mirror?.append(`$ ${command}\n  ${target.path}\n\n`);
 
         const run: Run = {
             child,
-            channel,
-            startedAt: Date.now(),
+            channel: {
+                append: (text) => {
+                    channel.append(text);
+                    mirror?.append(text);
+                },
+                appendLine: (text) => {
+                    channel.appendLine(text);
+                    mirror?.append(`${text}\n`);
+                },
+            },
+            mirror,
+            output,
+            startedAt,
             buffer: '',
             openUrl: openUrl && config.get<boolean>('openUrlOnStart', false),
             settled: false,
@@ -292,6 +321,7 @@ export class DevRunner {
         for (const [folderPath, run] of this.runs) {
             this.signal(run, 'SIGTERM');
             this.clearTimer(run);
+            run.mirror?.remove();
             void folderPath;
         }
 
@@ -604,6 +634,7 @@ export class DevRunner {
         }
 
         this.clearTimer(run);
+        run.mirror?.remove();
         this.runs.delete(folderPath);
         this.onChange();
     }
