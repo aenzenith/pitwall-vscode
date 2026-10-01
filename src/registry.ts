@@ -172,6 +172,22 @@ export class Registry extends EventEmitter {
         );
     }
 
+    /**
+     * Klasörü şu an çalıştıran başka katılımcı (VS Code penceresi ya da Pitwall uygulaması).
+     * Bu penceredeki bir kök orada çalışıyorsa satır onun durumunu gösterir, düğmeler ona gider.
+     */
+    public findRunnerFor(folderPath: string): { record: WindowRecord; project: ProjectState } | undefined {
+        for (const record of this.readPeers()) {
+            const project = record.projects.find((item) => item.folderPath === folderPath && item.running);
+
+            if (project) {
+                return { record, project };
+            }
+        }
+
+        return undefined;
+    }
+
     /** Başka pencereye iş emri bırakır. */
     public send(command: Omit<RemoteCommand, 'issuedBy' | 'issuedAt'>): void {
         const payload: RemoteCommand = { ...command, issuedBy: this.windowId, issuedAt: Date.now() };

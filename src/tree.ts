@@ -147,12 +147,20 @@ export class DevTree implements vscode.TreeDataProvider<Node> {
         const peers = this.registry.readPeers();
 
         if (scope === 'local') {
-            return this.localTargets().map((target) => ({
-                kind: 'project',
-                scope: 'local',
-                state: this.runner.stateOf(target),
-                favorite: isFavorite(target.path),
-            }));
+            return this.localTargets().map((target): ProjectNode => {
+                // Bu pencerenin kökü başka yerde (ör. Pitwall uygulamasında) çalışıyorsa onu göster;
+                // düğmeler oraya gider, aynı proje iki kez başlatılmaz.
+                const elsewhere = this.runner.isRunning(target.path) ? undefined : this.registry.findRunnerFor(target.path);
+
+                return {
+                    kind: 'project',
+                    scope: 'local',
+                    state: elsewhere?.project ?? this.runner.stateOf(target),
+                    favorite: isFavorite(target.path),
+                    windowId: elsewhere?.record.windowId,
+                    windowTitle: elsewhere?.record.title,
+                };
+            });
         }
 
         if (scope === 'favorite') {
@@ -301,7 +309,7 @@ export class DevTree implements vscode.TreeDataProvider<Node> {
      * Yıldız ikonu komuta bağlı olduğu için favori/değil iki ayrı komutla çizilir.
      */
     private contextValue(node: ProjectNode): string {
-        const where = node.scope === 'remote' || (node.scope === 'favorite' && node.windowId) ? 'remote' : 'here';
+        const where = node.windowId ? 'remote' : 'here';
         const state = node.state.running ? 'running' : 'idle';
 
         return `project.${where}.${state}.${node.favorite ? 'fav' : 'nofav'}`;
@@ -331,8 +339,12 @@ function iconState(node: ProjectNode): IconState {
  * Tek klasörlü pencerede başlık = klasör adıdır; yoksa satırda ad iki kez görünür.
  */
 function windowLabel(node: ProjectNode): string {
-    if (node.scope === 'local' || !node.windowTitle) {
+    if (!node.windowTitle) {
         return '';
+    }
+
+    if (node.scope === 'local') {
+        return vscode.l10n.t('running in {0}', node.windowTitle);
     }
 
     return node.windowTitle === node.state.name ? '' : node.windowTitle;
