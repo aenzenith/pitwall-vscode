@@ -4,6 +4,14 @@ All notable changes to this extension are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and releases are cut
 by release-please from Conventional Commits.
 
+## [0.14.0](https://github.com/aenzenith/pitwall-vscode/compare/v0.13.0...v0.14.0) (2026-10-01)
+
+
+### Features
+
+* **output:** server output mirrored to ~/.pitwall/output ([824e9a7](https://github.com/aenzenith/pitwall-vscode/commit/824e9a7cf0e174f01c997b832d2d756eae027328))
+* **tree:** local folders running elsewhere shown with their runner's state ([8b27226](https://github.com/aenzenith/pitwall-vscode/commit/8b272266e756ca840c225f60a49e85ded374c7ff))
+
 ## [0.13.0](https://github.com/aenzenith/pitwall-vscode/compare/v0.12.2...v0.13.0) (2026-10-01)
 
 
