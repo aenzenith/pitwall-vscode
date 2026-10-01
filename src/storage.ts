@@ -8,7 +8,6 @@ export const OLD_EXTENSION_ID = 'aenzenith.pitwall';
 /**
  * Pencereler arası ortak kayıt. VS Code'un kendi depolama klasörü yerine burada durur ki
  * Pitwall masaüstü uygulaması, Cursor ve VS Code Insiders da aynı kaydı görsün.
- * Biçimi: Pitwall uygulamasının `docs/PROTOCOL.md` dosyası.
  */
 export function sharedDir(): string {
     return path.join(os.homedir(), '.pitwall');
