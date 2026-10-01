@@ -4,6 +4,13 @@ All notable changes to this extension are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and releases are cut
 by release-please from Conventional Commits.
 
+## [0.12.0](https://github.com/aenzenith/pitwall/compare/v0.11.1...v0.12.0) (2026-10-01)
+
+
+### Features
+
+* **platform:** Windows support for starting and stopping servers ([86de28a](https://github.com/aenzenith/pitwall/commit/86de28abf4a877e135d40036d447f11bbc05f369))
+
 ## [0.11.1] — 2026-10-01
 
 ### Changed
