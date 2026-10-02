@@ -92,7 +92,7 @@ const COMMAND_TTL_MS = 30000;
  * VS Code, Cursor ve Insiders penceresi ile Pitwall uygulaması aynı dizini görür.
  *
  * - `windows/<id>.json` — her pencerenin kendi durumu (kalp atışıyla tazelenir)
- * - `commands/<hedef>__<ts>.json` — başka pencereye iş emri
+ * - `commands/<hedef>__<ts>-<rand>.json` — başka pencereye iş emri
  * - `pids/<id>.json` — pencerenin başlattığı süreçler (öksüz temizliği için)
  * - `favorites.json` — penceresi kapalı olsa da listede duran projeler
  */
@@ -116,6 +116,9 @@ export class Registry extends EventEmitter {
     private own: WindowRecord;
 
     private notifyTimer?: ReturnType<typeof setTimeout>;
+
+    /** Gönderilen emir sayısı: aynı milisaniyede aynı hedefe giden iki emir de ayrı dosyaya düşer. */
+    private sent = 0;
 
     public constructor(storageDir: string, title: string) {
         super();
@@ -227,7 +230,9 @@ export class Registry extends EventEmitter {
     /** Başka pencereye iş emri bırakır. */
     public send(command: Omit<RemoteCommand, 'issuedBy' | 'issuedAt'>): void {
         const payload: RemoteCommand = { ...command, issuedBy: this.windowId, issuedAt: Date.now() };
-        const file = path.join(this.commandsDir, `${command.target}__${Date.now()}-${Math.random().toString(36).slice(2, 8)}.json`);
+        // `<rand>`: sabit uzunlukta rastgele kısım başka gönderenlerden, sayaç bizim her emrimizden ayırır.
+        const rand = `${Math.random().toString(36).slice(2, 8).padEnd(6, '0')}${(this.sent++).toString(36)}`;
+        const file = path.join(this.commandsDir, `${command.target}__${Date.now()}-${rand}.json`);
 
         try {
             writeAtomic(file, JSON.stringify(payload));
