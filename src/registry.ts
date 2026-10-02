@@ -83,6 +83,8 @@ export type Favorite = {
 
 const HEARTBEAT_MS = 5000;
 const STALE_MS = 20000;
+/** Bu kadar eski kayıt süpürülür; katılımcının sunucuları ancak bundan sonra öksüz sayılabilir. */
+const DEAD_MS = STALE_MS * 3;
 const COMMAND_TTL_MS = 30000;
 
 /**
@@ -91,6 +93,7 @@ const COMMAND_TTL_MS = 30000;
  *
  * - `windows/<id>.json` — her pencerenin kendi durumu (kalp atışıyla tazelenir)
  * - `commands/<hedef>__<ts>.json` — başka pencereye iş emri
+ * - `pids/<id>.json` — pencerenin başlattığı süreçler (öksüz temizliği için)
  * - `favorites.json` — penceresi kapalı olsa da listede duran projeler
  */
 export class Registry extends EventEmitter {
@@ -253,12 +256,23 @@ export class Registry extends EventEmitter {
     }
 
     /**
-     * Ölü pencerelerin bıraktığı süreçleri döner ve kayıtlarını siler.
-     * Canlı pencerelerin kayıtlarına dokunulmaz.
+     * Ölü katılımcıların bıraktığı süreçleri döner ve kayıtlarını siler. Ölü demek ikisi birden:
+     * 60 sn'den (süpürme sınırı) taze kaydı yok ve kimliğindeki pid'in süreci de yok (kimlikte
+     * pid varsa). Uyuyup uyanan ya da bir süre tıkanan pencere 20 sn'den bayat görünebilir;
+     * sunucuları kapatılmaz. Canlı katılımcının kayıtlarına dokunulmaz.
      */
     public takeOrphans(): Array<{ path: string; pid: number }> {
-        const live = new Set(this.readWindows().map((record) => record.windowId));
+        const now = Date.now();
+        const fresh = new Set<string>();
         const orphans: Array<{ path: string; pid: number }> = [];
+
+        for (const file of this.listJson(this.windowsDir)) {
+            const record = readJson<WindowRecord>(path.join(this.windowsDir, file));
+
+            if (record && now - record.updatedAt <= DEAD_MS) {
+                fresh.add(record.windowId);
+            }
+        }
 
         for (const file of this.listJson(this.pidsDir)) {
             const full = path.join(this.pidsDir, file);
@@ -270,11 +284,16 @@ export class Registry extends EventEmitter {
                 continue;
             }
 
-            if (live.has(record.windowId)) {
+            const pid = participantPid(record.windowId);
+
+            if (record.windowId === this.windowId || fresh.has(record.windowId) || (pid !== undefined && processAlive(pid))) {
                 continue;
             }
 
-            orphans.push(...(record.entries ?? []));
+            // 0 bizim grubumuz, 1 (`-1`) erişilebilen her süreç olurdu: yalnız gerçek grup liderleri.
+            const entries = Array.isArray(record.entries) ? record.entries : [];
+
+            orphans.push(...entries.filter((entry) => Number.isSafeInteger(entry?.pid) && entry.pid > 1));
             safeUnlink(full);
         }
 
@@ -338,7 +357,7 @@ export class Registry extends EventEmitter {
             const full = path.join(this.windowsDir, file);
             const record = readJson<WindowRecord>(full);
 
-            if (!record || now - record.updatedAt > STALE_MS * 3) {
+            if (!record || now - record.updatedAt > DEAD_MS) {
                 safeUnlink(full);
             }
         }
@@ -413,6 +432,25 @@ export class Registry extends EventEmitter {
             this.notifyTimer = undefined;
             this.emit('changed');
         }, 150);
+    }
+}
+
+/** Katılımcı kimliğindeki pid (`<pid36>-<zaman36>`); kimlikte okunur bir pid yoksa undefined. */
+function participantPid(windowId: unknown): number | undefined {
+    const match = typeof windowId === 'string' ? /^([0-9a-z]+)-/i.exec(windowId) : null;
+    const pid = match ? parseInt(match[1], 36) : NaN;
+
+    return Number.isSafeInteger(pid) && pid > 0 && pid <= 0x7fffffff ? pid : undefined;
+}
+
+/** Süreç var mı. Başka kullanıcının süreci (`EPERM`) de var sayılır. */
+function processAlive(pid: number): boolean {
+    try {
+        process.kill(pid, 0);
+
+        return true;
+    } catch (error) {
+        return (error as NodeJS.ErrnoException).code === 'EPERM';
     }
 }
 

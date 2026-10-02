@@ -38,6 +38,11 @@ export function spawnShell(command: string, cwd: string): ChildProcess {
  * @returns Sinyal gönderilebildiyse true.
  */
 export function killTree(pid: number, signal: NodeJS.Signals): boolean {
+    // `-0` kendi grubumuz, `-1` erişilebilen her süreç, eksi pid tek bir yabancı süreç olurdu.
+    if (!Number.isSafeInteger(pid) || pid <= 1) {
+        return false;
+    }
+
     if (isWindows) {
         execFile('taskkill', ['/PID', String(pid), '/T', '/F'], { windowsHide: true }, () => undefined);
 

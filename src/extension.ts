@@ -121,6 +121,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     }, 5000);
     context.subscriptions.push({ dispose: () => clearInterval(ticker) });
 
+    // Açılıştan sonra da: az önce düşen bir katılımcı açılışta henüz canlı görünür.
+    const reaper = setInterval(() => void reapOrphans(), 60000);
+    context.subscriptions.push({ dispose: () => clearInterval(reaper) });
+
     void reapOrphans();
     void publishTerminals();
     scanClaude();
@@ -130,7 +134,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
 /**
  * Eklenti çökerse `deactivate` koşmaz ve süreçler öksüz kalır.
- * Açılışta ölü pencerelerin bıraktığı süreç grupları kapatılır.
+ * Açılışta ve sonra dakikada bir, ölü pencerelerin bıraktığı süreç grupları kapatılır.
  */
 async function reapOrphans(): Promise<void> {
     const orphans = registry.takeOrphans();
