@@ -4,6 +4,14 @@ All notable changes to this extension are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and releases are cut
 by release-please from Conventional Commits.
 
+## [0.15.1](https://github.com/aenzenith/pitwall-vscode/compare/v0.15.0...v0.15.1) (2026-10-02)
+
+
+### Bug Fixes
+
+* **orphans:** servers of live participants no longer reaped ([05555db](https://github.com/aenzenith/pitwall-vscode/commit/05555dbac430e96a479cc6096ab34eb50e49b018))
+* **registry:** commands sent in the same millisecond kept apart ([887e0ad](https://github.com/aenzenith/pitwall-vscode/commit/887e0adccae648589c33a3b6c3c69cc5531cf978))
+
 ## [0.15.0](https://github.com/aenzenith/pitwall-vscode/compare/v0.14.0...v0.15.0) (2026-10-02)
 
 
