@@ -2,7 +2,7 @@
     "name": "pitwall-vscode",
     "displayName": "Pitwall for VS Code",
     "description": "%extension.description%",
-    "version": "0.14.0",
+    "version": "0.15.0",
     "publisher": "aenzenith",
     "icon": "resources/icon.png",
     "private": true,
