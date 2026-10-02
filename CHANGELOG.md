@@ -4,6 +4,13 @@ All notable changes to this extension are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and releases are cut
 by release-please from Conventional Commits.
 
+## [0.15.0](https://github.com/aenzenith/pitwall-vscode/compare/v0.14.0...v0.15.0) (2026-10-02)
+
+
+### Features
+
+* **claude:** sessions brought up on request from the Pitwall app ([09b14c0](https://github.com/aenzenith/pitwall-vscode/commit/09b14c0ae68e2d8ec726c3924a30ebe3801222ef))
+
 ## [0.14.0](https://github.com/aenzenith/pitwall-vscode/compare/v0.13.0...v0.14.0) (2026-10-01)
 
 
