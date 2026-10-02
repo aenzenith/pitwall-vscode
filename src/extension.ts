@@ -82,6 +82,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         packageJsonWatcher.onDidDelete(onPackageJsonChange),
         vscode.window.onDidChangeActiveTextEditor(() => void sync()),
         vscode.window.onDidChangeWindowState(() => scanClaude()),
+        vscode.window.onDidOpenTerminal(() => void publishTerminals()),
+        vscode.window.onDidCloseTerminal(() => void publishTerminals()),
         vscode.workspace.onDidChangeWorkspaceFolders(() => void sync()),
         vscode.workspace.onDidChangeConfiguration((event) => {
             if (event.affectsConfiguration('pitwall')) {
@@ -120,6 +122,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     context.subscriptions.push({ dispose: () => clearInterval(ticker) });
 
     void reapOrphans();
+    void publishTerminals();
     scanClaude();
     await sync();
     await autoStart();
@@ -396,6 +399,12 @@ async function act(node: ProjectNode, action: 'start' | 'stop' | 'restart'): Pro
 }
 
 async function handleRemoteCommand(command: RemoteCommand): Promise<void> {
+    if (command.action === 'reveal-claude') {
+        await revealClaude(command);
+
+        return;
+    }
+
     const target = targetFromPath(command.folderPath);
 
     if (command.action === 'stop') {
@@ -410,7 +419,51 @@ async function handleRemoteCommand(command: RemoteCommand): Promise<void> {
         return;
     }
 
-    await runner.start(target, false);
+    // Bilinmeyen bir emir sunucu başlatmaz.
+    if (command.action === 'start') {
+        await runner.start(target, false);
+    }
+}
+
+/** Claude Code oturum kimliği: `~/.claude/projects/…/<kimlik>.jsonl`. */
+const SESSION_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Uygulamanın "bu Claude oturumunu göster" emri; pencereyi uygulama öne getirir.
+ * Terminalde çalışan oturumun terminali öne gelir. Öteki oturum Claude Code sekmesinde açılır:
+ * açıksa o sekme öne gelir, bitmişse oturum yeni sekmede devam eder. Hangisi olduğuna uygulama
+ * karar verir; terminaldeki canlı bir oturum asla sekmede açılmaz, yoksa aynı oturuma iki süreç
+ * yazar. Terminal artık yoksa hiçbir şey yapılmaz.
+ */
+async function revealClaude(command: RemoteCommand): Promise<void> {
+    if (command.terminalPid !== undefined) {
+        for (const terminal of vscode.window.terminals) {
+            if ((await terminal.processId) === command.terminalPid) {
+                terminal.show(false);
+
+                return;
+            }
+        }
+
+        return;
+    }
+
+    if (!command.sessionId || !SESSION_ID.test(command.sessionId)) {
+        return;
+    }
+
+    try {
+        await vscode.commands.executeCommand('claude-vscode.primaryEditor.open', command.sessionId);
+    } catch {
+        // Claude Code eklentisi kurulu değil: pencere zaten önde.
+    }
+}
+
+/** Terminallerin kabuk pid'lerini kayda yazar; uygulama terminaldeki Claude oturumunu böyle bulur. */
+async function publishTerminals(): Promise<void> {
+    const pids = await Promise.all(vscode.window.terminals.map((terminal) => terminal.processId));
+
+    registry.publishTerminals(pids.filter((pid): pid is number => typeof pid === 'number'));
 }
 
 /**

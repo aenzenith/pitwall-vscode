@@ -37,6 +37,13 @@ export type WindowRecord = {
     projects: ProjectState[];
     /** Bu pencerede gerçekten açık olan kök klasörler. Eski sürümlerde yok. */
     roots?: string[];
+    /**
+     * start/stop/restart dışında anladığı emirler. Eski sürümler bilmediği emri `start` sayar;
+     * o yüzden yeni bir emir yalnız onu burada ilan eden katılımcıya gönderilir.
+     */
+    features?: string[];
+    /** Terminallerinin kabuk pid'leri: terminalde çalışan bir Claude oturumunun yerini bulmak için. */
+    terminals?: number[];
 };
 
 /**
@@ -56,11 +63,18 @@ export function ownedProjects(record: WindowRecord): ProjectState[] {
 /** Başka pencereye gönderilen komut. */
 export type RemoteCommand = {
     target: string;
-    action: 'start' | 'stop' | 'restart';
+    action: 'start' | 'stop' | 'restart' | 'reveal-claude';
     folderPath: string;
     issuedBy: string;
     issuedAt: number;
+    /** `reveal-claude`: öne getirilecek Claude oturumu. */
+    sessionId?: string;
+    /** `reveal-claude`: oturum bir terminalde çalışıyorsa o terminalin kabuk pid'i. */
+    terminalPid?: number;
 };
+
+/** Bu sürümün start/stop/restart dışında anladığı emirler (bkz. `WindowRecord.features`). */
+export const FEATURES = ['reveal-claude'];
 
 export type Favorite = {
     path: string;
@@ -109,7 +123,15 @@ export class Registry extends EventEmitter {
         this.favoritesFile = path.join(storageDir, 'favorites.json');
         this.pidsDir = path.join(storageDir, 'pids');
         this.outputDir = path.join(storageDir, 'output');
-        this.own = { windowId: this.windowId, title, updatedAt: Date.now(), projects: [], roots: [] };
+        this.own = {
+            windowId: this.windowId,
+            title,
+            updatedAt: Date.now(),
+            projects: [],
+            roots: [],
+            features: FEATURES,
+            terminals: [],
+        };
 
         fs.mkdirSync(this.windowsDir, { recursive: true });
         fs.mkdirSync(this.commandsDir, { recursive: true });
@@ -133,6 +155,12 @@ export class Registry extends EventEmitter {
         this.own = { ...this.own, projects, roots, updatedAt: Date.now() };
         this.writeOwn();
         this.scheduleNotify();
+    }
+
+    /** Terminallerin kabuk pid'lerini duyurur. */
+    public publishTerminals(pids: number[]): void {
+        this.own = { ...this.own, terminals: pids, updatedAt: Date.now() };
+        this.writeOwn();
     }
 
     /** Bu pencere dahil, canlı bütün pencerelerin kayıtları. */
