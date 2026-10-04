@@ -2,7 +2,7 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 
 import type { ClaudeWatch } from './claude';
-import { ownedProjects, type Favorite, type ProjectState, type Registry } from './registry';
+import { locate, ownedProjects, type Favorite, type ProjectState, type Registry } from './registry';
 import type { DevRunner, Target } from './runner';
 import { targetFromFolder, targetFromPath } from './runner';
 
@@ -147,7 +147,7 @@ export class DevTree implements vscode.TreeDataProvider<Node> {
         const peers = this.registry.readPeers();
 
         if (scope === 'local') {
-            return this.localTargets().map((target): ProjectNode => {
+            const nodes = this.localTargets().map((target): ProjectNode => {
                 // Bu pencerenin kökü başka yerde (ör. Pitwall uygulamasında) çalışıyorsa onu göster;
                 // düğmeler oraya gider, aynı proje iki kez başlatılmaz.
                 const elsewhere = this.runner.isRunning(target.path) ? undefined : this.registry.findRunnerFor(target.path);
@@ -161,6 +161,21 @@ export class DevTree implements vscode.TreeDataProvider<Node> {
                     windowTitle: elsewhere?.record.title,
                 };
             });
+
+            // Burada çalışan ama ne kök ne favori olan proje (çalışırken favoriden çıkarıldı):
+            // satırı kaybolmasın, durdurulabilsin.
+            for (const folderPath of this.runner.runningPaths()) {
+                if (!localPaths.has(folderPath) && !isFavorite(folderPath)) {
+                    nodes.push({
+                        kind: 'project',
+                        scope: 'local',
+                        state: this.runner.stateOf(targetFromPath(folderPath)),
+                        favorite: false,
+                    });
+                }
+            }
+
+            return nodes;
         }
 
         if (scope === 'favorite') {
@@ -170,46 +185,60 @@ export class DevTree implements vscode.TreeDataProvider<Node> {
         }
 
         const nodes: ProjectNode[] = [];
+        const seen = new Set<string>();
 
         for (const peer of peers) {
-            for (const project of ownedProjects(peer)) {
-                if (localPaths.has(project.folderPath) || isFavorite(project.folderPath)) {
+            for (const { folderPath } of ownedProjects(peer)) {
+                // Burada çalışan proje "Bu pencere"de durur; iki katılımcının sahiplendiği tek satırdır.
+                if (
+                    localPaths.has(folderPath) ||
+                    isFavorite(folderPath) ||
+                    seen.has(folderPath) ||
+                    this.runner.isRunning(folderPath)
+                ) {
                     continue;
                 }
 
-                nodes.push({
-                    kind: 'project',
-                    scope: 'remote',
-                    state: project,
-                    favorite: false,
-                    windowId: peer.windowId,
-                    windowTitle: peer.title,
-                });
+                seen.add(folderPath);
+
+                const place = locate(peers, folderPath);
+
+                if (place) {
+                    nodes.push({
+                        kind: 'project',
+                        scope: 'remote',
+                        state: place.project,
+                        favorite: false,
+                        windowId: place.record.windowId,
+                        windowTitle: place.record.title,
+                    });
+                }
             }
         }
 
         return nodes;
     }
 
-    /** Favori: başka pencerede açıksa oradaki durumu, değilse kapalı satır. */
+    /**
+     * Favori: burada çalışıyorsa buradaki durumu, başka katılımcıdaysa (çalıştıran, yoksa açık
+     * tutan) oradakini gösterir; hiçbiri değilse kapalı satır.
+     */
     private remoteOrClosed(
         favorite: Favorite,
         peers: ReturnType<Registry['readPeers']>,
         isFavorite: boolean,
     ): ProjectNode {
-        for (const peer of peers) {
-            const match = ownedProjects(peer).find((project) => project.folderPath === favorite.path);
+        const place = this.runner.isRunning(favorite.path) ? undefined : locate(peers, favorite.path);
 
-            if (match) {
-                return {
-                    kind: 'project',
-                    scope: 'favorite',
-                    state: match,
-                    favorite: isFavorite,
-                    windowId: peer.windowId,
-                    windowTitle: peer.title,
-                };
-            }
+        if (place) {
+            return {
+                kind: 'project',
+                scope: 'favorite',
+                state: place.project,
+                favorite: isFavorite,
+                windowId: place.record.windowId,
+                windowTitle: place.record.title,
+            };
         }
 
         const target = targetFromPath(favorite.path, favorite.name);
@@ -274,7 +303,7 @@ export class DevTree implements vscode.TreeDataProvider<Node> {
 
         if (node.windowTitle) {
             lines.push('', vscode.l10n.t('Window: {0}', node.windowTitle));
-        } else if (node.scope === 'favorite') {
+        } else if (node.scope === 'favorite' && !node.state.running) {
             lines.push('', vscode.l10n.t('Window closed — starting it runs the server from this window.'));
         }
 

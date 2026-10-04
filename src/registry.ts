@@ -60,6 +60,33 @@ export function ownedProjects(record: WindowRecord): ProjectState[] {
     return record.projects.filter((project) => project.running);
 }
 
+/**
+ * Projenin başka katılımcıdaki yeri: onu çalıştıran, kimse çalıştırmıyorsa kökü olarak açık tutan.
+ * İkisi ayrı olabilir (favori bir pencereden başlatılır, projenin kendi penceresi sonra açılır);
+ * durum ve düğmeler o zaman çalıştırana aittir. Yalnız ilk sahibe bakmak satırı "durdu" gösterir
+ * ve başlat emri ikinci bir sunucu açar.
+ */
+export function locate(
+    peers: WindowRecord[],
+    folderPath: string,
+): { record: WindowRecord; project: ProjectState } | undefined {
+    let owner: { record: WindowRecord; project: ProjectState } | undefined;
+
+    for (const record of peers) {
+        const project = ownedProjects(record).find((item) => item.folderPath === folderPath);
+
+        if (project?.running) {
+            return { record, project };
+        }
+
+        if (project && !owner) {
+            owner = { record, project };
+        }
+    }
+
+    return owner;
+}
+
 /** Başka pencereye gönderilen komut. */
 export type RemoteCommand = {
     target: string;

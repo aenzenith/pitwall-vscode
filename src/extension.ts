@@ -60,7 +60,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         void sync();
     };
 
-    registry.on('changed', () => tree.refresh());
+    registry.on('changed', () => {
+        tree.refresh();
+        // Sayaç ve başlat/durdur düğmesi başka katılımcının durumuna da bağlı.
+        void drawStatusBar();
+    });
     claude.on('changed', () => {
         tree.refresh();
         drawClaudeItem();
@@ -91,9 +95,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                 void sync();
             }
         }),
-        vscode.commands.registerCommand('pitwall.toggle', () => runHere((target) => runner.toggle(target))),
-        vscode.commands.registerCommand('pitwall.restart', () => runHere((target) => runner.restart(target))),
-        vscode.commands.registerCommand('pitwall.stop', () => runHere((target) => runner.stop(target.path))),
+        vscode.commands.registerCommand('pitwall.toggle', () => runHere((target) => actHere(target, 'toggle'))),
+        vscode.commands.registerCommand('pitwall.restart', () => runHere((target) => actHere(target, 'restart'))),
+        vscode.commands.registerCommand('pitwall.stop', () => runHere((target) => actHere(target, 'stop'))),
         vscode.commands.registerCommand('pitwall.startAll', () => void startEverywhere()),
         vscode.commands.registerCommand('pitwall.stopAll', () => void stopEverywhere()),
         vscode.commands.registerCommand('pitwall.restartAll', () => void restartEverywhere()),
@@ -234,7 +238,7 @@ async function drawStatusBar(): Promise<void> {
     if (runner.isBusy(target.path)) {
         statusItem.text = '$(sync~spin) npm dev reload';
         statusItem.tooltip = vscode.l10n.t('Restarting… — {0}', folder.name);
-    } else if (runner.isRunning(target.path)) {
+    } else if (runner.isRunning(target.path) || registry.findRunnerFor(target.path)) {
         statusItem.text = '$(primitive-square) npm dev stop';
         statusItem.tooltip = new vscode.MarkdownString(
             vscode.l10n.t('`{0}` is running — **{1}**\n\nClick to stop.', script, folder.name),
@@ -394,12 +398,60 @@ async function act(node: ProjectNode, action: 'start' | 'stop' | 'restart'): Pro
     }
 
     if (action === 'restart') {
+        await runner.stop(target.path);
+        await startHere(target, false);
+
+        return;
+    }
+
+    await startHere(target);
+}
+
+/**
+ * Kural 1: başka katılımcının (pencere ya da Pitwall uygulaması) çalıştırdığı proje burada ikinci
+ * kez başlatılmaz. Satır ve gelen emir birkaç saniye eski olabilir; kayıt başlatmadan hemen önce
+ * okunur.
+ */
+async function startHere(target: Target, openUrl = true): Promise<void> {
+    if (registry.findRunnerFor(target.path)) {
+        tree.refresh();
+
+        return;
+    }
+
+    await runner.start(target, openUrl);
+}
+
+/**
+ * Durum çubuğu düğmeleri. Kök başka yerde (ör. Pitwall uygulamasında) çalışıyorsa emir oraya
+ * gider, paneldeki satırında olduğu gibi.
+ */
+async function actHere(target: Target, action: 'toggle' | 'stop' | 'restart'): Promise<void> {
+    const elsewhere = runner.isRunning(target.path) ? undefined : registry.findRunnerFor(target.path);
+
+    if (elsewhere) {
+        registry.send({
+            target: elsewhere.record.windowId,
+            action: action === 'toggle' ? 'stop' : action,
+            folderPath: target.path,
+        });
+
+        return;
+    }
+
+    if (action === 'stop') {
+        await runner.stop(target.path);
+
+        return;
+    }
+
+    if (action === 'restart') {
         await runner.restart(target);
 
         return;
     }
 
-    await runner.start(target);
+    await runner.toggle(target);
 }
 
 async function handleRemoteCommand(command: RemoteCommand): Promise<void> {
@@ -418,14 +470,15 @@ async function handleRemoteCommand(command: RemoteCommand): Promise<void> {
     }
 
     if (command.action === 'restart') {
-        await runner.restart(target);
+        await runner.stop(target.path);
+        await startHere(target, false);
 
         return;
     }
 
     // Bilinmeyen bir emir sunucu başlatmaz.
     if (command.action === 'start') {
-        await runner.start(target, false);
+        await startHere(target, false);
     }
 }
 
