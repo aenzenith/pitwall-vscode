@@ -4,6 +4,13 @@ All notable changes to this extension are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and releases are cut
 by release-please from Conventional Commits.
 
+## [0.15.2](https://github.com/aenzenith/pitwall-vscode/compare/v0.15.1...v0.15.2) (2026-10-04)
+
+
+### Bug Fixes
+
+* **tree:** rows show the state of whoever runs the server ([bb7035e](https://github.com/aenzenith/pitwall-vscode/commit/bb7035e55b73b7491494cf606338443b8d8e9937))
+
 ## [0.15.1](https://github.com/aenzenith/pitwall-vscode/compare/v0.15.0...v0.15.1) (2026-10-02)
 
 
