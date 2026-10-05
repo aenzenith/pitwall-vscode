@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 
+import { processAlive } from './registry';
 import { writeAtomic } from './storage';
 
 /**
@@ -93,6 +94,15 @@ export function readTail(lines: string[]): TailVerdict | undefined {
     return undefined;
 }
 
+/**
+ * Turu bitmiş ama Claude Code'un hâlâ meşgul (`busy`) dediği oturumun işi bitmemiştir:
+ * arka planda bıraktığı alt ajanlar çalışıyordur, sonuçlarını kendisi alıp devam eder.
+ * Soru bekleyen tur olduğu gibi kalır.
+ */
+export function settle(verdict: TailVerdict, busy: boolean): TailVerdict {
+    return busy && verdict.turn?.kind === 'finished' ? { cwd: verdict.cwd } : verdict;
+}
+
 /** Claude Code'un proje klasörü adı: harf ve rakam dışı her karakter `-` olur. */
 export function encodeProjectPath(folderPath: string): string {
     return folderPath.replace(/[^a-zA-Z0-9]/g, '-');
@@ -105,6 +115,9 @@ export function encodeProjectPath(folderPath: string): string {
  */
 export class ClaudeWatch extends EventEmitter {
     private readonly root = path.join(os.homedir(), '.claude', 'projects');
+
+    /** Claude Code'un çalışan oturum kayıtları: `<pid>.json`. */
+    private readonly sessionsDir = path.join(os.homedir(), '.claude', 'sessions');
 
     private readonly seenFile: string;
 
@@ -135,12 +148,13 @@ export class ClaudeWatch extends EventEmitter {
         const book = this.readSeen();
         const looking = new Set(lookingAt);
         const dirs = this.listDirs();
+        const busy = this.busySessions();
         const next = new Map<string, ClaudeTurn>();
         let touched = false;
 
         for (const folderPath of new Set(folderPaths)) {
             const baseline = book.paths[folderPath] ?? book.since;
-            const turn = this.newestTurn(folderPath, dirs, baseline);
+            const turn = this.newestTurn(folderPath, dirs, baseline, busy);
 
             if (!turn) {
                 continue;
@@ -178,7 +192,7 @@ export class ClaudeWatch extends EventEmitter {
         }
     }
 
-    private newestTurn(folderPath: string, dirs: string[], baseline: number): ClaudeTurn | undefined {
+    private newestTurn(folderPath: string, dirs: string[], baseline: number, busy: Set<string>): ClaudeTurn | undefined {
         const encoded = foldCase(encodeProjectPath(folderPath));
         const inside = foldCase(folderPath + path.sep);
         let newest: ClaudeTurn | undefined;
@@ -193,7 +207,7 @@ export class ClaudeWatch extends EventEmitter {
                 continue;
             }
 
-            for (const verdict of this.verdictsIn(path.join(this.root, dir), baseline)) {
+            for (const verdict of this.verdictsIn(path.join(this.root, dir), baseline, busy)) {
                 if (!exact && !(verdict.cwd && foldCase(verdict.cwd).startsWith(inside))) {
                     continue;
                 }
@@ -209,8 +223,11 @@ export class ClaudeWatch extends EventEmitter {
         return newest;
     }
 
-    /** Klasördeki, `baseline` sonrası değişmiş oturumların kararları. */
-    private verdictsIn(dir: string, baseline: number): TailVerdict[] {
+    /**
+     * Klasördeki, `baseline` sonrası değişmiş oturumların kararları. `busy`: Claude Code'un
+     * meşgul dediği oturumlar; onların bitmiş turu sayılmaz (`settle`).
+     */
+    private verdictsIn(dir: string, baseline: number, busy: Set<string>): TailVerdict[] {
         const verdicts: TailVerdict[] = [];
         let names: string[];
 
@@ -235,25 +252,48 @@ export class ClaudeWatch extends EventEmitter {
             }
 
             const cached = this.files.get(file);
+            let verdict = cached?.verdict;
 
-            if (cached && cached.mtimeMs === stat.mtimeMs && cached.size === stat.size) {
-                if (cached.verdict) {
-                    verdicts.push(cached.verdict);
-                }
+            if (!cached || cached.mtimeMs !== stat.mtimeMs || cached.size !== stat.size) {
+                verdict = readFileTail(file, stat.size);
 
-                continue;
+                this.files.set(file, { mtimeMs: stat.mtimeMs, size: stat.size, verdict });
             }
 
-            const verdict = readFileTail(file, stat.size);
-
-            this.files.set(file, { mtimeMs: stat.mtimeMs, size: stat.size, verdict });
-
             if (verdict) {
-                verdicts.push(verdict);
+                verdicts.push(settle(verdict, busy.has(name.slice(0, -'.jsonl'.length))));
             }
         }
 
         return verdicts;
+    }
+
+    /**
+     * Claude Code'un kendisinin meşgul (`busy`) dediği, süreci yaşayan oturumların kimlikleri.
+     * Kayıttan yalnız `pid`, `sessionId` ve `status` alınır; başka hiçbir alan tutulmaz.
+     */
+    private busySessions(): Set<string> {
+        const busy = new Set<string>();
+        let names: string[];
+
+        try {
+            names = fs.readdirSync(this.sessionsDir).filter((name) => name.endsWith('.json'));
+        } catch {
+            return busy;
+        }
+
+        for (const name of names) {
+            try {
+                const { pid, sessionId, status } = JSON.parse(fs.readFileSync(path.join(this.sessionsDir, name), 'utf8'));
+
+                if (status === 'busy' && typeof sessionId === 'string' && Number.isSafeInteger(pid) && pid > 0 && processAlive(pid)) {
+                    busy.add(sessionId);
+                }
+            } catch {
+            }
+        }
+
+        return busy;
     }
 
     private listDirs(): string[] {

@@ -476,7 +476,7 @@ function participantPid(windowId: unknown): number | undefined {
 }
 
 /** Süreç var mı. Başka kullanıcının süreci (`EPERM`) de var sayılır. */
-function processAlive(pid: number): boolean {
+export function processAlive(pid: number): boolean {
     try {
         process.kill(pid, 0);
 
