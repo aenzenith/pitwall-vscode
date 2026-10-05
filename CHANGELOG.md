@@ -4,6 +4,14 @@ All notable changes to this extension are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and releases are cut
 by release-please from Conventional Commits.
 
+## [0.15.3](https://github.com/aenzenith/pitwall-vscode/compare/v0.15.2...v0.15.3) (2026-10-05)
+
+
+### Bug Fixes
+
+* **claude:** no dot while a session's subagents still run ([82c72e8](https://github.com/aenzenith/pitwall-vscode/commit/82c72e82432cb9ab3944494b1ec7f04506a3ba55))
+* **panel:** title shortened to "Pitwall" ([2c5dd8f](https://github.com/aenzenith/pitwall-vscode/commit/2c5dd8f933ec35739bd5f788756fb6b059d5d815))
+
 ## [0.15.2](https://github.com/aenzenith/pitwall-vscode/compare/v0.15.1...v0.15.2) (2026-10-04)
 
 
