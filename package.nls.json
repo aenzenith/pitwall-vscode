@@ -1,7 +1,7 @@
 {
     "extension.description": "Jump between project windows and run their npm dev servers — every open VS Code window in one panel, with a dot where Claude is waiting on you.",
     "container.title": "Pitwall",
-    "view.name": "npm dev",
+    "view.name": "Pitwall",
     "command.toggle": "npm dev start/stop",
     "command.restart": "npm dev reload",
     "command.stop": "npm dev stop",

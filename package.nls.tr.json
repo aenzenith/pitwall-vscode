@@ -1,7 +1,7 @@
 {
     "extension.description": "Proje pencereleri arasında geç, npm dev sunucularını çalıştır — bütün açık VS Code pencereleri tek panelde; Claude seni beklediğinde bir nokta.",
     "container.title": "Pitwall",
-    "view.name": "npm dev",
+    "view.name": "Pitwall",
     "category": "Pitwall",
     "command.toggle": "npm dev başlat/durdur",
     "command.restart": "npm dev yeniden başlat",
