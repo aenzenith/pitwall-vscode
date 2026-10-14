@@ -4,6 +4,13 @@ All notable changes to this extension are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and releases are cut
 by release-please from Conventional Commits.
 
+## [1.1.0](https://github.com/aenzenith/pitwall-vscode/compare/v1.0.0...v1.1.0) (2026-10-14)
+
+
+### Features
+
+* **claude:** a breathing ring while Claude works ([8dfbc5b](https://github.com/aenzenith/pitwall-vscode/commit/8dfbc5bc0b55ffe15637e4ceddd5eb103340cfb6))
+
 ## [1.0.0](https://github.com/aenzenith/pitwall-vscode/compare/v0.15.3...v1.0.0) (2026-10-05)
 
 
