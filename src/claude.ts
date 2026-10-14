@@ -11,11 +11,28 @@ import { writeAtomic } from './storage';
  *
  * - `finished`: tur bitti, cevap bekliyor
  * - `asking`: Claude soru sordu (AskUserQuestion / plan onayı)
+ * - `permission`: Claude Code bir izin istemi açtı, cevabını bekliyor
  */
 export type ClaudeTurn = {
-    kind: 'finished' | 'asking';
+    kind: 'finished' | 'asking' | 'permission';
     at: number;
 };
+
+/** Oturumun o anki hâli: çalışıyor, seni bekliyor ya da ikisi de değil. */
+export type SessionPhase = 'working' | 'waiting' | 'idle';
+
+/**
+ * Claude Code'un çalışan bir oturum için kendi yazdığı durum (`~/.claude/sessions/<pid>.json`):
+ * `busy` (işte, arka planda bıraktığı alt ajanlar dahil), `waiting` (izin istemi ya da soru
+ * açık), `idle`, `shell`. `since`: durumun değiştiği an.
+ */
+export type LiveStatus = {
+    status: string;
+    since?: number;
+};
+
+/** Turu bitmemiş oturum bu kadar yakında yazıldıysa çalışıyor sayılır. */
+export const WORKING_WINDOW_MS = 5 * 60 * 1000;
 
 /** Kuyruktan çıkan karar: dikkat isteyen tur yoksa `turn` boştur (Claude çalışıyor ya da sıra kullanıcıda değil). */
 export type TailVerdict = {
@@ -95,12 +112,53 @@ export function readTail(lines: string[]): TailVerdict | undefined {
 }
 
 /**
- * Turu bitmiş ama Claude Code'un hâlâ meşgul (`busy`) dediği oturumun işi bitmemiştir:
- * arka planda bıraktığı alt ajanlar çalışıyordur, sonuçlarını kendisi alıp devam eder.
- * Soru bekleyen tur olduğu gibi kalır.
+ * Bir oturumun hâli; Pitwall uygulamasının kararıyla aynı (`claude.rs`: `log_state`, hook'un
+ * izin ve soru beklemesi). `modified`: kaydın son yazıldığı an; `baseline`: projeye son
+ * bakılan an; `recent`: şimdiden `WORKING_WINDOW_MS` öncesi; `live`: Claude Code'un kendi sözü,
+ * süreci çalışıyorsa.
+ *
+ * - Açık istem (`waiting`): bakıldıktan sonra açıldıysa bekliyor. Uygulama bunu hook
+ *   olaylarından öğrenir; eklenti onları göremez, aynı anı Claude Code'un kendi sözünden alır.
+ * - Bitmiş tur, Claude Code oturumu meşgul (`busy`) derken bitmemiştir: arka planda bıraktığı
+ *   alt ajanlar çalışıyordur, sonuçlarını kendisi alıp devam eder.
+ * - Bakıldıktan sonra biten ya da soru soran tur bekliyor.
+ * - Turu sürerken meşgulse ya da son 5 dakikada yazıldıysa çalışıyor: tek bir araç çağrısı,
+ *   kayda satır düşmeden bundan uzun sürebilir.
  */
-export function settle(verdict: TailVerdict, busy: boolean): TailVerdict {
-    return busy && verdict.turn?.kind === 'finished' ? { cwd: verdict.cwd } : verdict;
+export function sessionPhase(
+    verdict: TailVerdict,
+    modified: number,
+    baseline: number,
+    recent: number,
+    live?: LiveStatus,
+): { phase: SessionPhase; turn?: ClaudeTurn } {
+    const turn = verdict.turn;
+
+    if (live?.status === 'waiting') {
+        const since = live.since ?? modified;
+
+        if (since > baseline) {
+            return { phase: 'waiting', turn: { kind: turn?.kind === 'asking' ? 'asking' : 'permission', at: since } };
+        }
+
+        return { phase: Math.max(since, modified) > recent ? 'working' : 'idle' };
+    }
+
+    const busy = live?.status === 'busy';
+
+    if (turn && busy && turn.kind === 'finished') {
+        return { phase: 'working' };
+    }
+
+    if (turn && turn.at > baseline) {
+        return { phase: 'waiting', turn };
+    }
+
+    if (!turn && (busy || modified > recent)) {
+        return { phase: 'working' };
+    }
+
+    return { phase: 'idle' };
 }
 
 /** Claude Code'un proje klasörü adı: harf ve rakam dışı her karakter `-` olur. */
@@ -108,10 +166,24 @@ export function encodeProjectPath(folderPath: string): string {
     return folderPath.replace(/[^a-zA-Z0-9]/g, '-');
 }
 
+/** Bir oturum kaydı: kimliği, son yazıldığı an ve son satırlarından çıkan karar. */
+type SessionLog = {
+    id: string;
+    modified: number;
+    verdict?: TailVerdict;
+};
+
+/** Bir projedeki oturumun hâli ve beklediği tur; `fromLog`: bekleyişi kaydın son satırı söyledi. */
+type SessionState = {
+    phase: SessionPhase;
+    turn?: ClaudeTurn;
+    fromLog: boolean;
+};
+
 /**
- * `~/.claude/projects` altındaki oturum kayıtlarını izler; bitmiş ama
- * bakılmamış Claude işlerini proje bazında tutar. "Bakıldı" bilgisi
- * pencereler arası ortak `claude-seen.json` dosyasındadır.
+ * `~/.claude/projects` altındaki oturum kayıtlarını ve Claude Code'un çalışan oturumlarının
+ * durumunu izler; proje başına Claude'un seni beklediği son işi ve çalışıp çalışmadığını tutar.
+ * "Bakıldı" bilgisi pencereler arası ortak `claude-seen.json` dosyasındadır.
  */
 export class ClaudeWatch extends EventEmitter {
     private readonly root = path.join(os.homedir(), '.claude', 'projects');
@@ -124,6 +196,8 @@ export class ClaudeWatch extends EventEmitter {
     private readonly files = new Map<string, CachedFile>();
 
     private pendingByPath = new Map<string, ClaudeTurn>();
+
+    private working = new Set<string>();
 
     public constructor(storageDir: string) {
         super();
@@ -140,42 +214,58 @@ export class ClaudeWatch extends EventEmitter {
         return [...this.pendingByPath.keys()];
     }
 
+    /** Projede Claude çalışıyor, seni beklemiyor. */
+    public isWorking(folderPath: string): boolean {
+        return this.working.has(folderPath);
+    }
+
     /**
-     * Verilen projeleri tarar. `lookingAt` odaktaki pencerenin kökleridir:
-     * orada biten iş görülmüş sayılır ve işaret konmaz.
+     * Verilen projeleri tarar. Bir projede seni bekleyen iş varsa o (en yenisi), yoksa çalışan
+     * bir oturum varsa "çalışıyor" tutulur. `lookingAt` odaktaki pencerenin kökleridir: orada
+     * biten ya da soru soran tur görülmüş sayılır, seni bekleyen hiçbir şeye işaret konmaz.
      */
     public scan(folderPaths: string[], lookingAt: string[]): void {
         const book = this.readSeen();
         const looking = new Set(lookingAt);
         const dirs = this.listDirs();
-        const busy = this.busySessions();
+        const live = this.liveSessions();
+        const now = Date.now();
+        const recent = now - WORKING_WINDOW_MS;
         const next = new Map<string, ClaudeTurn>();
+        const working = new Set<string>();
         let touched = false;
 
         for (const folderPath of new Set(folderPaths)) {
             const baseline = book.paths[folderPath] ?? book.since;
-            const turn = this.newestTurn(folderPath, dirs, baseline, busy);
-
-            if (!turn) {
-                continue;
-            }
+            let states = this.statesFor(folderPath, dirs, baseline, recent, live);
 
             if (looking.has(folderPath)) {
-                book.paths[folderPath] = Date.now();
-                touched = true;
+                if (states.some((state) => state.phase === 'waiting' && state.fromLog)) {
+                    book.paths[folderPath] = now;
+                    touched = true;
+                    states = this.statesFor(folderPath, dirs, now, recent, live);
+                }
 
-                continue;
+                // Açık istem görülmüş yazılmaz (uygulama onu yine haber verir), yalnız burada işaret konmaz.
+                states = states.filter((state) => state.phase !== 'waiting');
             }
 
-            next.set(folderPath, turn);
+            const turn = newestWaiting(states);
+
+            if (turn) {
+                next.set(folderPath, turn);
+            } else if (states.some((state) => state.phase === 'working')) {
+                working.add(folderPath);
+            }
         }
 
         if (touched) {
             this.writeSeen(book);
         }
 
-        if (!sameTurns(this.pendingByPath, next)) {
+        if (!sameTurns(this.pendingByPath, next) || !sameSet(this.working, working)) {
             this.pendingByPath = next;
+            this.working = working;
             this.emit('changed');
         }
     }
@@ -192,10 +282,16 @@ export class ClaudeWatch extends EventEmitter {
         }
     }
 
-    private newestTurn(folderPath: string, dirs: string[], baseline: number, busy: Set<string>): ClaudeTurn | undefined {
+    /**
+     * Projenin oturumlarının hâli. Bakıldıktan ve son 5 dakikadan önce yazılmış kayıt atlanır;
+     * Claude Code'un meşgul ya da istem açık dediği oturum ne zaman yazılmış olursa olsun
+     * sayılır: alt ajanları kendi kayıtlarına yazar.
+     */
+    private statesFor(folderPath: string, dirs: string[], baseline: number, recent: number, live: Map<string, LiveStatus>): SessionState[] {
         const encoded = foldCase(encodeProjectPath(folderPath));
         const inside = foldCase(folderPath + path.sep);
-        let newest: ClaudeTurn | undefined;
+        const since = Math.min(baseline, recent);
+        const states: SessionState[] = [];
 
         for (const dir of dirs) {
             const name = foldCase(dir);
@@ -207,37 +303,40 @@ export class ClaudeWatch extends EventEmitter {
                 continue;
             }
 
-            for (const verdict of this.verdictsIn(path.join(this.root, dir), baseline, busy)) {
-                if (!exact && !(verdict.cwd && foldCase(verdict.cwd).startsWith(inside))) {
+            for (const log of this.logsIn(path.join(this.root, dir), since, live)) {
+                const status = live.get(log.id);
+                // Kararı olmayan kayıt (yalnız meta satırlar) Claude Code'un sözüyle değerlendirilir.
+                const verdict = log.verdict ?? (exact && status ? {} : undefined);
+
+                if (!verdict || (!exact && !(verdict.cwd && foldCase(verdict.cwd).startsWith(inside)))) {
                     continue;
                 }
 
-                const turn = verdict.turn;
+                const { phase, turn } = sessionPhase(verdict, log.modified, baseline, recent, status);
 
-                if (turn && turn.at > baseline && (!newest || turn.at > newest.at)) {
-                    newest = turn;
-                }
+                states.push({ phase, turn, fromLog: status?.status !== 'waiting' });
             }
         }
 
-        return newest;
+        return states;
     }
 
     /**
-     * Klasördeki, `baseline` sonrası değişmiş oturumların kararları. `busy`: Claude Code'un
-     * meşgul dediği oturumlar; onların bitmiş turu sayılmaz (`settle`).
+     * Klasördeki, `since` sonrası yazılmış ya da Claude Code'un meşgul veya istem açık dediği
+     * oturumların kayıtları.
      */
-    private verdictsIn(dir: string, baseline: number, busy: Set<string>): TailVerdict[] {
-        const verdicts: TailVerdict[] = [];
+    private logsIn(dir: string, since: number, live: Map<string, LiveStatus>): SessionLog[] {
+        const logs: SessionLog[] = [];
         let names: string[];
 
         try {
             names = fs.readdirSync(dir).filter((name) => name.endsWith('.jsonl'));
         } catch {
-            return verdicts;
+            return logs;
         }
 
         for (const name of names) {
+            const id = name.slice(0, -'.jsonl'.length);
             const file = path.join(dir, name);
             let stat: fs.Stats;
 
@@ -247,7 +346,7 @@ export class ClaudeWatch extends EventEmitter {
                 continue;
             }
 
-            if (stat.mtimeMs <= baseline) {
+            if (stat.mtimeMs <= since && !live.has(id)) {
                 continue;
             }
 
@@ -260,40 +359,50 @@ export class ClaudeWatch extends EventEmitter {
                 this.files.set(file, { mtimeMs: stat.mtimeMs, size: stat.size, verdict });
             }
 
-            if (verdict) {
-                verdicts.push(settle(verdict, busy.has(name.slice(0, -'.jsonl'.length))));
-            }
+            logs.push({ id, modified: stat.mtimeMs, verdict });
         }
 
-        return verdicts;
+        return logs;
     }
 
     /**
-     * Claude Code'un kendisinin meşgul (`busy`) dediği, süreci yaşayan oturumların kimlikleri.
-     * Kayıttan yalnız `pid`, `sessionId` ve `status` alınır; başka hiçbir alan tutulmaz.
+     * Claude Code'un meşgul (`busy`) ya da istem açık (`waiting`) dediği, süreci yaşayan
+     * oturumlar, kimlikleriyle. Kayıttan yalnız `pid`, `sessionId`, `status` ve
+     * `statusUpdatedAt` alınır; başka hiçbir alan tutulmaz.
      */
-    private busySessions(): Set<string> {
-        const busy = new Set<string>();
+    private liveSessions(): Map<string, LiveStatus> {
+        const live = new Map<string, LiveStatus>();
         let names: string[];
 
         try {
             names = fs.readdirSync(this.sessionsDir).filter((name) => name.endsWith('.json'));
         } catch {
-            return busy;
+            return live;
         }
 
         for (const name of names) {
             try {
-                const { pid, sessionId, status } = JSON.parse(fs.readFileSync(path.join(this.sessionsDir, name), 'utf8'));
+                const { pid, sessionId, status, statusUpdatedAt } = JSON.parse(
+                    fs.readFileSync(path.join(this.sessionsDir, name), 'utf8'),
+                );
 
-                if (status === 'busy' && typeof sessionId === 'string' && Number.isSafeInteger(pid) && pid > 0 && processAlive(pid)) {
-                    busy.add(sessionId);
+                if (
+                    (status === 'busy' || status === 'waiting') &&
+                    typeof sessionId === 'string' &&
+                    Number.isSafeInteger(pid) &&
+                    pid > 0 &&
+                    processAlive(pid)
+                ) {
+                    live.set(sessionId, {
+                        status,
+                        since: Number.isFinite(statusUpdatedAt) ? statusUpdatedAt : undefined,
+                    });
                 }
             } catch {
             }
         }
 
-        return busy;
+        return live;
     }
 
     private listDirs(): string[] {
@@ -398,6 +507,23 @@ export function mergeSeen(disk: SeenBook | undefined, mine: SeenBook): SeenBook 
     }
 
     return { since: Math.min(disk.since, mine.since), paths };
+}
+
+/** Bekleyen turların en yenisi. */
+function newestWaiting(states: SessionState[]): ClaudeTurn | undefined {
+    let newest: ClaudeTurn | undefined;
+
+    for (const { phase, turn } of states) {
+        if (phase === 'waiting' && turn && (!newest || turn.at > newest.at)) {
+            newest = turn;
+        }
+    }
+
+    return newest;
+}
+
+function sameSet(a: Set<string>, b: Set<string>): boolean {
+    return a.size === b.size && [...a].every((item) => b.has(item));
 }
 
 function sameTurns(a: Map<string, ClaudeTurn>, b: Map<string, ClaudeTurn>): boolean {

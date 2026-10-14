@@ -32,6 +32,7 @@
 | `⚠` | Port yanıt vermiyor |
 | `✕` | Çöktü |
 | ikonda turuncu `•` | Claude seni bekliyor |
+| ikonda nefes alan turuncu `◦` | Claude çalışıyor |
 
 Satırda klasör adı yazar; pencere adı yalnız farklıysa eklenir.
 
@@ -39,15 +40,16 @@ Satırda klasör adı yazar; pencere adı yalnız farklıysa eklenir.
 
 Birçok projede Claude'a iş ver, başka işe geç, dönmeyi unutma.
 
-- **Turuncu nokta**, bakmadığın bir pencerede Claude turu bitirince ya da soru sorunca (`AskUserQuestion`, plan onayı) çıkar. Hangisi olduğu ve saati tooltip'te yazar.
-- **Alt ajanlar çalışırken çıkmaz:** arka planda ajan bırakarak biten tur henüz bitmiş sayılmaz. Nokta, ajanlar bitip Claude işi toparlayınca çıkar.
+- **Turuncu nokta**, bakmadığın bir pencerede Claude turu bitirince, soru sorunca (`AskUserQuestion`, plan onayı) ya da izin isteyince çıkar. Hangisi olduğu ve saati tooltip'te yazar.
+- **Nefes alan halka**, Claude bir projede çalışırken görünür: tur sürerken ve arka planda bıraktığı alt ajanlar çalışırken. Ajanlar çalışırken biten tur henüz bitmiş sayılmaz; nokta, ajanlar bitip Claude işi toparlayınca çıkar.
+- İkisi de Pitwall uygulamasının kurallarıyla çalışır; bir proje ikisinde de aynı işareti taşır.
 - **Silinir**: o pencereye geçince ya da satıra tıklayınca.
 - **Durum çubuğu** bekleyen proje sayısını gösterir (`• 2`). Tıklayınca birine gider.
 - CLI ve VS Code oturumlarını, alt klasörde açılan oturumları ve penceresi kapalı favorileri kapsar.
 
-Yakalanmayan: izin istemleri — Claude Code bunları kayda yazmıyor. Kayıt formatı resmi bir API değil; bir Claude Code güncellemesi algılamayı bozabilir.
+Kayıt formatı ve Claude Code'un oturum durumu resmi bir API değil; bir Claude Code güncellemesi algılamayı bozabilir.
 
-> **Gizlilik:** Pitwall, Claude Code oturum kayıtlarının (`~/.claude/projects`) yalnız son satırlarını ve çalışan oturumlarının durumunu (`~/.claude/sessions`: süreç kimliği, oturum kimliği ve durum, başka hiçbir şey) yalnız senin makinende okur. Hiçbir yere bir şey gönderilmez, `~/.claude` içinde hiçbir şey değiştirilmez.
+> **Gizlilik:** Pitwall, Claude Code oturum kayıtlarının (`~/.claude/projects`) yalnız son satırlarını ve çalışan oturumlarının durumunu (`~/.claude/sessions`: süreç kimliği, oturum kimliği, durum ve durumun değiştiği an, başka hiçbir şey) yalnız senin makinende okur. Hiçbir yere bir şey gönderilmez, `~/.claude` içinde hiçbir şey değiştirilmez.
 
 ## Komutlar
 

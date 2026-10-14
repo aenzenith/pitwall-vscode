@@ -32,6 +32,7 @@
 | `⚠` | Port not responding |
 | `✕` | Crashed |
 | orange `•` on the icon | Claude is waiting on you |
+| breathing orange `◦` on the icon | Claude is working |
 
 A row shows the folder name; the window name is added only when it differs.
 
@@ -39,15 +40,16 @@ A row shows the folder name; the window name is added only when it differs.
 
 Give Claude work in several projects, switch to something else, and still remember to come back.
 
-- **The orange dot** appears when Claude finishes a turn or asks a question (`AskUserQuestion`, plan approval) in a window you aren't looking at. The tooltip says which, and when.
-- **Not while subagents still run:** a turn that ends with agents left working in the background isn't finished yet. The dot comes once they are done and Claude has wrapped up.
+- **The orange dot** appears when Claude finishes a turn, asks a question (`AskUserQuestion`, plan approval) or asks for your permission in a window you aren't looking at. The tooltip says which, and when.
+- **The breathing ring** shows while Claude works on a project: mid-turn, and while subagents it left in the background still run. A turn that ends with agents still working isn't finished yet; the dot comes once they are done and Claude has wrapped up.
+- Both follow the Pitwall app's rules, so a project shows the same mark in both.
 - **It clears** when you focus that window or click the row.
 - **The status bar** counts waiting projects (`• 2`). Click it to jump to one.
 - Covers CLI and VS Code sessions, sessions started in a subfolder, and favourites whose window is closed.
 
-Not detected: permission prompts — Claude Code doesn't log them. The log format isn't a public API, so a Claude Code update may break detection.
+The log format and Claude Code's session status aren't a public API, so a Claude Code update may break detection.
 
-> **Privacy:** Pitwall only reads the last lines of Claude Code's session logs (`~/.claude/projects`) and the status of its running sessions (`~/.claude/sessions`: process id, session id and status, nothing else) on your machine. Nothing is sent anywhere and nothing in `~/.claude` is changed.
+> **Privacy:** Pitwall only reads the last lines of Claude Code's session logs (`~/.claude/projects`) and the status of its running sessions (`~/.claude/sessions`: process id, session id, status and when it changed, nothing else) on your machine. Nothing is sent anywhere and nothing in `~/.claude` is changed.
 
 ## Commands
 

@@ -1,7 +1,7 @@
 import * as path from 'path';
 import * as vscode from 'vscode';
 
-import type { ClaudeWatch } from './claude';
+import type { ClaudeTurn, ClaudeWatch } from './claude';
 import { locate, ownedProjects, type Favorite, type ProjectState, type Registry } from './registry';
 import type { DevRunner, Target } from './runner';
 import { targetFromFolder, targetFromPath } from './runner';
@@ -287,14 +287,9 @@ export class DevTree implements vscode.TreeDataProvider<Node> {
         const turn = this.claude.pendingFor(node.state.folderPath);
 
         if (turn) {
-            const time = new Date(turn.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-
-            lines.push(
-                '',
-                turn.kind === 'asking'
-                    ? vscode.l10n.t('Claude asked a question at {0} — waiting for your answer.', time)
-                    : vscode.l10n.t('Claude finished at {0} — not looked at yet.', time),
-            );
+            lines.push('', describeTurn(turn));
+        } else if (this.claude.isWorking(node.state.folderPath)) {
+            lines.push('', vscode.l10n.t('Claude is working.'));
         }
 
         if (node.state.url) {
@@ -311,8 +306,9 @@ export class DevTree implements vscode.TreeDataProvider<Node> {
     }
 
     /**
-     * Bakılmamış Claude işi varsa durum ikonunun turuncu noktalı SVG eşi çizilir;
-     * ThemeIcon üstüne rozet koymanın API'si yok.
+     * Claude'un köşedeki işareti, Pitwall uygulamasındaki gibi: seni bekliyorsa (bakılmamış iş,
+     * soru, izin istemi) turuncu nokta, çalışıyorsa nefes alan turuncu halka. İkisinde de durum
+     * ikonunun işaretli SVG eşi çizilir; ThemeIcon üstüne rozet koymanın API'si yok.
      */
     private icon(node: ProjectNode, busy: boolean): vscode.ThemeIcon | { light: vscode.Uri; dark: vscode.Uri } {
         if (busy) {
@@ -320,16 +316,18 @@ export class DevTree implements vscode.TreeDataProvider<Node> {
         }
 
         const state = iconState(node);
+        const folderPath = node.state.folderPath;
+        const mark = this.claude.pendingFor(folderPath) ? '' : this.claude.isWorking(folderPath) ? '-working' : undefined;
 
-        if (!this.claude.pendingFor(node.state.folderPath)) {
+        if (mark === undefined) {
             return THEME_ICONS[state]();
         }
 
         const dir = vscode.Uri.joinPath(this.extensionUri, 'resources', 'claude');
 
         return {
-            light: vscode.Uri.joinPath(dir, `${state}-light.svg`),
-            dark: vscode.Uri.joinPath(dir, `${state}-dark.svg`),
+            light: vscode.Uri.joinPath(dir, `${state}${mark}-light.svg`),
+            dark: vscode.Uri.joinPath(dir, `${state}${mark}-dark.svg`),
         };
     }
 
@@ -342,6 +340,20 @@ export class DevTree implements vscode.TreeDataProvider<Node> {
         const state = node.state.running ? 'running' : 'idle';
 
         return `project.${where}.${state}.${node.favorite ? 'fav' : 'nofav'}`;
+    }
+}
+
+/** Claude'un seni beklediği iş, ipucunda: ne beklediği ve ne zamandan beri. */
+function describeTurn(turn: ClaudeTurn): string {
+    const time = new Date(turn.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+    switch (turn.kind) {
+        case 'asking':
+            return vscode.l10n.t('Claude asked a question at {0} — waiting for your answer.', time);
+        case 'permission':
+            return vscode.l10n.t('Claude asked for your permission at {0} — waiting for your answer.', time);
+        default:
+            return vscode.l10n.t('Claude finished at {0} — not looked at yet.', time);
     }
 }
 

@@ -32,6 +32,8 @@
     "Which project should the dev server start in?": "Dev sunucusu hangi projede başlasın?",
     "Claude asked a question at {0} — waiting for your answer.": "Claude soru sordu ({0}) — cevabını bekliyor.",
     "Claude finished at {0} — not looked at yet.": "Claude işi bitirdi ({0}) — henüz bakılmadı.",
+    "Claude asked for your permission at {0} — waiting for your answer.": "Claude izin istedi ({0}) — cevabını bekliyor.",
+    "Claude is working.": "Claude çalışıyor.",
     "Claude is waiting in: {0}": "Claude şuralarda bekliyor: {0}",
     "Which project should open?": "Hangi proje açılsın?",
     "running in {0}": "{0} içinde çalışıyor"
