@@ -4,6 +4,17 @@ All notable changes to this extension are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and releases are cut
 by release-please from Conventional Commits.
 
+## [1.1.1](https://github.com/aenzenith/pitwall-vscode/compare/v1.1.0...v1.1.1) (2026-10-15)
+
+
+### Bug Fixes
+
+* **claude:** marks for long folder paths, and a turn stopped with Esc rests at once ([5a73386](https://github.com/aenzenith/pitwall-vscode/commit/5a73386132b31a788cbde12468bbcdcc83182db6))
+* **registry:** orphans and commands are taken safely ([dc57b9b](https://github.com/aenzenith/pitwall-vscode/commit/dc57b9b191b49ae2792ef4eb2d0a6a6f39da0bef))
+* **registry:** the same folder in another spelling on Windows is one project ([0b91709](https://github.com/aenzenith/pitwall-vscode/commit/0b91709731748a6992683b0eb4acbeebd71e8b19))
+* **runner:** a restart keeps its port, quick clicks leave no second server, a slow stop stays stopped ([aed18c7](https://github.com/aenzenith/pitwall-vscode/commit/aed18c721e8dfe161bf0bb57d76bc0c8a4f8935c))
+* **runner:** no --port for a project that asks for none ([3125766](https://github.com/aenzenith/pitwall-vscode/commit/312576632fda8b3e4e4038f4d09e840dd7fd545a))
+
 ## [1.1.0](https://github.com/aenzenith/pitwall-vscode/compare/v1.0.0...v1.1.0) (2026-10-14)
 
 
