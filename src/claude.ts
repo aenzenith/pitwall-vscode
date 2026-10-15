@@ -24,7 +24,7 @@ export type SessionPhase = 'working' | 'waiting' | 'idle';
 /**
  * Claude Code'un çalışan bir oturum için kendi yazdığı durum (`~/.claude/sessions/<pid>.json`):
  * `busy` (işte, arka planda bıraktığı alt ajanlar dahil), `waiting` (izin istemi ya da soru
- * açık), `idle`, `shell`. `since`: durumun değiştiği an.
+ * açık), `idle`, `shell` (boşta, arka planda bir komutu sürüyor). `since`: durumun değiştiği an.
  */
 export type LiveStatus = {
     status: string;
@@ -38,6 +38,8 @@ export const WORKING_WINDOW_MS = 5 * 60 * 1000;
 export type TailVerdict = {
     turn?: ClaudeTurn;
     cwd?: string;
+    /** Karar veren satırın zamanı. Tur sürüyorsa tur en geç o an başlamıştır (`sessionPhase`). */
+    at?: number;
 };
 
 export type SeenBook = {
@@ -88,24 +90,24 @@ export function readTail(lines: string[]): TailVerdict | undefined {
         }
 
         const cwd = typeof entry.cwd === 'string' ? entry.cwd : undefined;
+        const at = Date.parse(entry.timestamp) || undefined;
 
         if (entry.type === 'user') {
-            return { cwd };
+            return { cwd, at };
         }
 
         const message = entry.message ?? {};
-        const at = Date.parse(entry.timestamp) || 0;
         const content: Array<Record<string, any>> = Array.isArray(message.content) ? message.content : [];
 
         if (content.some((block) => block.type === 'tool_use' && ASKING_TOOLS.has(block.name))) {
-            return { turn: { kind: 'asking', at }, cwd };
+            return { turn: { kind: 'asking', at: at ?? 0 }, cwd, at };
         }
 
         if (message.stop_reason && message.stop_reason !== 'tool_use') {
-            return { turn: { kind: 'finished', at }, cwd };
+            return { turn: { kind: 'finished', at: at ?? 0 }, cwd, at };
         }
 
-        return { cwd };
+        return { cwd, at };
     }
 
     return undefined;
@@ -122,6 +124,10 @@ export function readTail(lines: string[]): TailVerdict | undefined {
  * - Bitmiş tur, Claude Code oturumu meşgul (`busy`) derken bitmemiştir: arka planda bıraktığı
  *   alt ajanlar çalışıyordur, sonuçlarını kendisi alıp devam eder.
  * - Bakıldıktan sonra biten ya da soru soran tur bekliyor.
+ * - Süren tur, Claude Code oturuma o turun başından (kayıttaki son satırının zamanından)
+ *   itibaren boşta (`idle`, `shell`) dediyse bitmiştir: kullanıcı kesti (Esc), `Stop` gelmez.
+ *   Sessizce biter: bekleyen tur da turuncu nokta da yok. Turun başından önce yazılmış söz (yeni
+ *   istem için dosya henüz yazılmamış) bir şey değiştirmez.
  * - Turu sürerken meşgulse ya da son 5 dakikada yazıldıysa çalışıyor: tek bir araç çağrısı,
  *   kayda satır düşmeden bundan uzun sürebilir.
  */
@@ -154,16 +160,42 @@ export function sessionPhase(
         return { phase: 'waiting', turn };
     }
 
-    if (!turn && (busy || modified > recent)) {
+    const interrupted = resting(live) && live?.since !== undefined && verdict.at !== undefined && live.since >= verdict.at;
+
+    if (!turn && (busy || (modified > recent && !interrupted))) {
         return { phase: 'working' };
     }
 
     return { phase: 'idle' };
 }
 
-/** Claude Code'un proje klasörü adı: harf ve rakam dışı her karakter `-` olur. */
+/** Claude Code bu uzunluğu geçen klasör adını keser ve sonuna yolun özetini ekler. */
+const MAX_PROJECT_NAME = 200;
+
+/**
+ * Claude Code'un proje klasörü adı: harf ve rakam dışı her UTF-16 birimi `-` olur. 200'ü geçen
+ * ad orada kesilir, arkasına `-` ve yolun özeti (36 tabanında) gelir; uygulamadaki
+ * `encode_project_path` ile aynı. Yanlış ad o projenin bütün oturumlarını sessizce kaybeder.
+ */
 export function encodeProjectPath(folderPath: string): string {
-    return folderPath.replace(/[^a-zA-Z0-9]/g, '-');
+    const name = folderPath.replace(/[^a-zA-Z0-9]/g, '-');
+
+    if (name.length <= MAX_PROJECT_NAME) {
+        return name;
+    }
+
+    return `${name.slice(0, MAX_PROJECT_NAME)}-${Math.abs(pathHash(folderPath)).toString(36)}`;
+}
+
+/** Claude Code'un yol özeti: UTF-16 birimleri üzerinde 32 bitte `hash * 31 + birim`. */
+function pathHash(folderPath: string): number {
+    let hash = 0;
+
+    for (let index = 0; index < folderPath.length; index += 1) {
+        hash = (Math.imul(hash, 31) + folderPath.charCodeAt(index)) | 0;
+    }
+
+    return hash;
 }
 
 /** Bir oturum kaydı: kimliği, son yazıldığı an ve son satırlarından çıkan karar. */
@@ -306,7 +338,7 @@ export class ClaudeWatch extends EventEmitter {
             for (const log of this.logsIn(path.join(this.root, dir), since, live)) {
                 const status = live.get(log.id);
                 // Kararı olmayan kayıt (yalnız meta satırlar) Claude Code'un sözüyle değerlendirilir.
-                const verdict = log.verdict ?? (exact && status ? {} : undefined);
+                const verdict = log.verdict ?? (exact && followed(status) ? {} : undefined);
 
                 if (!verdict || (!exact && !(verdict.cwd && foldCase(verdict.cwd).startsWith(inside)))) {
                     continue;
@@ -346,7 +378,7 @@ export class ClaudeWatch extends EventEmitter {
                 continue;
             }
 
-            if (stat.mtimeMs <= since && !live.has(id)) {
+            if (stat.mtimeMs <= since && !followed(live.get(id))) {
                 continue;
             }
 
@@ -366,9 +398,9 @@ export class ClaudeWatch extends EventEmitter {
     }
 
     /**
-     * Claude Code'un meşgul (`busy`) ya da istem açık (`waiting`) dediği, süreci yaşayan
-     * oturumlar, kimlikleriyle. Kayıttan yalnız `pid`, `sessionId`, `status` ve
-     * `statusUpdatedAt` alınır; başka hiçbir alan tutulmaz.
+     * Süreci yaşayan oturumların Claude Code'daki durumu (`busy`, `waiting`, `idle`, `shell`),
+     * kimlikleriyle. Kayıttan yalnız `pid`, `sessionId`, `status` ve `statusUpdatedAt` alınır;
+     * başka hiçbir alan tutulmaz.
      */
     private liveSessions(): Map<string, LiveStatus> {
         const live = new Map<string, LiveStatus>();
@@ -387,7 +419,7 @@ export class ClaudeWatch extends EventEmitter {
                 );
 
                 if (
-                    (status === 'busy' || status === 'waiting') &&
+                    (status === 'busy' || status === 'waiting' || status === 'idle' || status === 'shell') &&
                     typeof sessionId === 'string' &&
                     Number.isSafeInteger(pid) &&
                     pid > 0 &&
@@ -508,6 +540,16 @@ export function mergeSeen(disk: SeenBook | undefined, mine: SeenBook): SeenBook 
 
     // Başka katılımcının eklediği alanlar olduğu gibi kalır (PROTOCOL.md, kural 4).
     return { ...disk, since: Math.min(disk.since, mine.since), paths };
+}
+
+/** Claude Code oturumu işte ya da istem açık diyor: kaydı ne zaman yazılmış olursa olsun izlenir. */
+function followed(live: LiveStatus | undefined): boolean {
+    return live?.status === 'busy' || live?.status === 'waiting';
+}
+
+/** Claude Code oturumu boşta diyor (`shell`: arka planda bir komutu sürüyor). */
+function resting(live: LiveStatus | undefined): boolean {
+    return live?.status === 'idle' || live?.status === 'shell';
 }
 
 /** Bekleyen turların en yenisi. */
