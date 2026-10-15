@@ -60,19 +60,27 @@ describe('samePath', () => {
     // uygulamada çalışan sunucu burada durmuş görünür ve başlat ikinci sunucu açar.
     it('Windows\'ta harf ve ayraç farkını saymaz, başka yerde yolu olduğu gibi karşılaştırır', () => {
         const platform = Object.getOwnPropertyDescriptor(process, 'platform') as PropertyDescriptor;
+        // Testin koştuğu makineden bağımsız: CI'ın Windows'unda da macOS'unda da her iki durum denenir.
+        const on = (value: NodeJS.Platform, check: () => void) => {
+            Object.defineProperty(process, 'platform', { value });
 
-        Object.defineProperty(process, 'platform', { value: 'win32' });
+            try {
+                check();
+            } finally {
+                Object.defineProperty(process, 'platform', platform);
+            }
+        };
 
-        try {
+        on('win32', () => {
             const app = record({ windowId: 'app', roots: [], projects: [project('C:\\work\\paddock', true)] });
 
             expect(locate([app], 'c:\\work\\paddock')?.record.windowId).toBe('app');
             expect(samePath('c:/work/paddock/', 'C:\\Work\\Paddock')).toBe(true);
             expect(samePath('C:\\work\\paddock', 'C:\\work\\paddock-docs')).toBe(false);
-        } finally {
-            Object.defineProperty(process, 'platform', platform);
-        }
+        });
 
-        expect(samePath('/Users/me/paddock', '/users/me/paddock')).toBe(false);
+        on('darwin', () => {
+            expect(samePath('/Users/me/paddock', '/users/me/paddock')).toBe(false);
+        });
     });
 });
