@@ -78,4 +78,11 @@ describe('mergeSeen', () => {
             paths: { '/p/a': 500, '/p/b': 300, '/p/c': 600 },
         });
     });
+
+    // PROTOCOL.md kural 4: öbür tarafın eklediği alan, bizim yazışımızda kaybolmaz.
+    it('başka katılımcının eklediği alanları korur', () => {
+        const disk = { since: 100, paths: {}, future: { x: 1 } };
+
+        expect(mergeSeen(disk, { since: 100, paths: { '/p/a': 1 } })).toMatchObject({ future: { x: 1 } });
+    });
 });

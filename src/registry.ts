@@ -1,5 +1,6 @@
 import { EventEmitter } from 'events';
 import * as fs from 'fs';
+import * as os from 'os';
 import * as path from 'path';
 
 import { writeAtomic } from './storage';
@@ -170,10 +171,7 @@ export class Registry extends EventEmitter {
         fs.mkdirSync(this.commandsDir, { recursive: true });
         fs.mkdirSync(this.pidsDir, { recursive: true });
 
-        this.writeOwn();
-        this.sweep();
-
-        this.heartbeat = setInterval(() => this.writeOwn(), HEARTBEAT_MS);
+        // Önce dinlenir, sonra kayıt yazılır: kaydı gören, emrini hemen bırakabilir.
         this.watch(this.windowsDir, () => this.scheduleNotify());
         this.watch(this.commandsDir, () => this.drainCommands());
         this.watch(storageDir, (file) => {
@@ -181,6 +179,15 @@ export class Registry extends EventEmitter {
                 this.scheduleNotify();
             }
         });
+
+        this.writeOwn();
+        this.sweep();
+
+        // Dosya olayı kaçabilir (izleyici yeni açılmışken bırakılan emir): emirler kalp atışında da okunur.
+        this.heartbeat = setInterval(() => {
+            this.writeOwn();
+            this.drainCommands();
+        }, HEARTBEAT_MS);
     }
 
     /** Bu pencerenin projelerini günceller ve diğer pencerelere duyurur. */
@@ -291,10 +298,12 @@ export class Registry extends EventEmitter {
      * Ölü katılımcıların bıraktığı süreçleri döner ve kayıtlarını siler. Ölü demek ikisi birden:
      * 60 sn'den (süpürme sınırı) taze kaydı yok ve kimliğindeki pid'in süreci de yok (kimlikte
      * pid varsa). Uyuyup uyanan ya da bir süre tıkanan pencere 20 sn'den bayat görünebilir;
-     * sunucuları kapatılmaz. Canlı katılımcının kayıtlarına dokunulmaz.
+     * sunucuları kapatılmaz. Canlı katılımcının kayıtlarına dokunulmaz. Pid'ler yeniden dağıtılır:
+     * sistem son açılmadan önce yazılmış dosya hiçbir şey döndürmez, yalnız silinir.
      */
     public takeOrphans(): Array<{ path: string; pid: number }> {
         const now = Date.now();
+        const booted = now - os.uptime() * 1000;
         const fresh = new Set<string>();
         const orphans: Array<{ path: string; pid: number }> = [];
 
@@ -319,6 +328,12 @@ export class Registry extends EventEmitter {
             const pid = participantPid(record.windowId);
 
             if (record.windowId === this.windowId || fresh.has(record.windowId) || (pid !== undefined && processAlive(pid))) {
+                continue;
+            }
+
+            if (writtenAt(full) < booted) {
+                safeUnlink(full);
+
                 continue;
             }
 
@@ -483,6 +498,15 @@ export function processAlive(pid: number): boolean {
         return true;
     } catch (error) {
         return (error as NodeJS.ErrnoException).code === 'EPERM';
+    }
+}
+
+/** Dosyanın son yazıldığı an; okunamazsa 0 (yani açılıştan önce). */
+function writtenAt(file: string): number {
+    try {
+        return fs.statSync(file).mtimeMs;
+    } catch {
+        return 0;
     }
 }
 

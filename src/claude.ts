@@ -506,7 +506,8 @@ export function mergeSeen(disk: SeenBook | undefined, mine: SeenBook): SeenBook 
         paths[folderPath] = Math.max(paths[folderPath] ?? 0, at);
     }
 
-    return { since: Math.min(disk.since, mine.since), paths };
+    // Başka katılımcının eklediği alanlar olduğu gibi kalır (PROTOCOL.md, kural 4).
+    return { ...disk, since: Math.min(disk.since, mine.since), paths };
 }
 
 /** Bekleyen turların en yenisi. */

@@ -64,6 +64,18 @@ describe('takeOrphans', () => {
         expect(takenPids()).toEqual([]);
     });
 
+    // Makine çökünce pencere dosyasını silemez; açılıştan sonra o pid'ler başka programların olabilir.
+    it('son açılıştan önce yazılmış pid dosyasından pid vermez, dosyayı siler', () => {
+        const beforeBoot = participant(`${DEAD}-crashed`, [41]);
+        const secondsAgo = os.uptime() + 3600;
+        const at = new Date(Date.now() - secondsAgo * 1000);
+
+        fs.utimesSync(beforeBoot, at, at);
+
+        expect(takenPids()).toEqual([]);
+        expect(fs.existsSync(beforeBoot)).toBe(false);
+    });
+
     it('kimliğinde pid olmayan katılımcıda yalnız kaydın yaşına bakar', () => {
         const old = participant('legacy', [31], 5 * 60_000);
         const fresh = participant('fresh', [32], 30_000);
