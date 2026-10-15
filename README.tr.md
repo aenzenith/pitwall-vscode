@@ -71,7 +71,7 @@ Toplu komutlar bütün pencereleri kapsar; başka pencerenin projesi için iş o
 |---|---|---|
 | `pitwall.script` | `dev` | Çalıştırılacak npm script'i. `build` ile başlayanlar reddedilir. |
 | `pitwall.packageManager` | `auto` | `npm`, `pnpm`, `yarn` ya da `bun`. `auto` lock dosyasına bakar. |
-| `pitwall.port` | `0` | Kullanılacak port. `0` = `vite.config` içindeki `server.port`, yoksa 5173. |
+| `pitwall.port` | `0` | Kullanılacak port. `0` = `vite.config` içindeki `server.port`, yoksa 5173; `vite.config` yoksa script'in seçtiği. |
 | `pitwall.autoStart` | `lastSession` | Pencere açılınca ne başlasın: `lastSession`, `favorites`, `workspace` ya da `off`. |
 | `pitwall.autoStartOpensUrl` | `false` | Otomatik başlatma da tarayıcı açsın. |
 | `pitwall.openUrlOnStart` | `false` | Sunucuyu başlatınca tarayıcıyı aç. |

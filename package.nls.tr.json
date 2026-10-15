@@ -23,7 +23,7 @@
     "command.showClaudePending": "Claude'un beklediği projeleri göster",
     "config.script": "Çalıştırılacak npm script adı. `build` ile başlayan adlar reddedilir.",
     "config.packageManager": "Paket yöneticisi. auto = lock dosyasından bulunur.",
-    "config.port": "Projenin istediği port. `0` = otomatik: `vite.config` içindeki `server.port`, o da yoksa 5173. Port doluysa üstündeki ilk boş port kullanılır.",
+    "config.port": "Projenin istediği port. `0` = otomatik: `vite.config` içindeki `server.port`, o da yoksa 5173. Port doluysa üstündeki ilk boş port kullanılır. Burada port ve `vite.config` yoksa script kendi seçtiği portta kalır.",
     "config.autoStart": "Pencere açılınca ne başlatılsın. Aynı projeyi başka pencere çalıştırıyorsa atlanır.",
     "config.autoStart.off": "Hiçbir şey başlatma.",
     "config.autoStart.lastSession": "Bu pencere kapanırken çalışan projeleri geri kaldır.",

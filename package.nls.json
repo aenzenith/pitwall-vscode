@@ -23,7 +23,7 @@
     "category": "Pitwall",
     "config.script": "npm script to run. Names starting with `build` are rejected.",
     "config.packageManager": "Package manager. auto = detected from the lock file.",
-    "config.port": "Port the project wants. `0` = automatic: `server.port` from `vite.config`, otherwise 5173. If it is busy, the first free port above it is used.",
+    "config.port": "Port the project wants. `0` = automatic: `server.port` from `vite.config`, otherwise 5173. If it is busy, the first free port above it is used. With no port here and no `vite.config`, the script keeps the port it picks itself.",
     "config.autoStart": "What to start when the window opens. Projects already running in another window are skipped.",
     "config.autoStartOpensUrl": "Let automatic start open the browser too. Off by default, so servers come up quietly.",
     "config.openUrlOnStart": "Open the browser on start. When off, the address opens only from the link button on the row.",

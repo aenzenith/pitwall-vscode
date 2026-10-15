@@ -688,10 +688,17 @@ export class DevRunner {
 
     /**
      * Başlamadan önce boş port ayırır: hedef port doluysa üstündeki ilk boş porta geçer.
-     * Sessiz çalışır — kullanıcıya sorulmaz, söylenmez.
+     * Sessiz çalışır — kullanıcıya sorulmaz, söylenmez. Port istemeyen projeye (ayarda port yok,
+     * vite.config yok) `--port` verilmez: script kendi portunu seçer (Next, Nuxt, Astro dolu
+     * porttan kendisi geçer), bazısı bu bayrağı reddeder.
      */
     private async freePortArgs(target: Target, config: vscode.WorkspaceConfiguration): Promise<string[]> {
         const base = await this.basePort(target, config);
+
+        if (base === undefined) {
+            return [];
+        }
+
         const free = await this.reserveFreePort(base, target.path);
 
         if (!free || free === base) {
@@ -738,18 +745,25 @@ export class DevRunner {
         return undefined;
     }
 
-    /** Projenin istediği port: ayar > vite.config > 5173. */
-    private async basePort(target: Target, config: vscode.WorkspaceConfiguration): Promise<number> {
+    /**
+     * Projenin istediği port: ayar > vite.config'teki `server.port` > Vite'ın kendi 5173'ü.
+     * Ayarda portu ve vite.config'i olmayan proje port istemez: undefined.
+     */
+    private async basePort(target: Target, config: vscode.WorkspaceConfiguration): Promise<number | undefined> {
         const configured = config.get<number>('port', 0);
 
         if (Number.isInteger(configured) && configured > 0) {
             return configured;
         }
 
+        let vite = false;
+
         for (const name of ['vite.config.ts', 'vite.config.js', 'vite.config.mts', 'vite.config.mjs']) {
             try {
                 const raw = await vscode.workspace.fs.readFile(vscode.Uri.joinPath(target.uri, name));
                 const port = parseVitePort(Buffer.from(raw).toString('utf8'));
+
+                vite = true;
 
                 if (port) {
                     return port;
@@ -759,7 +773,7 @@ export class DevRunner {
             }
         }
 
-        return 5173;
+        return vite ? 5173 : undefined;
     }
 
     /* ---------- adres ---------- */
