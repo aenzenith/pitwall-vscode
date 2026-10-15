@@ -5,7 +5,7 @@ import { ClaudeWatch } from './claude';
 import { hasScript, pickFolder } from './resolve';
 import { killOrphan } from './process';
 import { adoptOldStorage, OLD_EXTENSION_ID, sharedDir } from './storage';
-import { ownedProjects, Registry, type RemoteCommand } from './registry';
+import { ownedProjects, Registry, samePath, type RemoteCommand } from './registry';
 import { DevRunner, type Target, targetFromFolder, targetFromPath } from './runner';
 import { DevTree, favoriteOf, type ProjectNode } from './tree';
 
@@ -433,7 +433,7 @@ async function actHere(target: Target, action: 'toggle' | 'stop' | 'restart'): P
         registry.send({
             target: elsewhere.record.windowId,
             action: action === 'toggle' ? 'stop' : action,
-            folderPath: target.path,
+            folderPath: elsewhere.project.folderPath,
         });
 
         return;
@@ -461,7 +461,7 @@ async function handleRemoteCommand(command: RemoteCommand): Promise<void> {
         return;
     }
 
-    const target = targetFromPath(command.folderPath);
+    const target = targetFromPath(ownSpelling(command.folderPath));
 
     if (command.action === 'stop') {
         await runner.stop(target.path);
@@ -480,6 +480,17 @@ async function handleRemoteCommand(command: RemoteCommand): Promise<void> {
     if (command.action === 'start') {
         await startHere(target, false);
     }
+}
+
+/**
+ * Emirdeki klasör bu pencerenin yazılışıyla: Windows'ta uygulama `C:\…` yazar, VS Code `c:\…`
+ * (kural 3). Burada çalışan ya da kök olan aynı klasörün yolu, o yoksa emirdeki: başka yazılışla
+ * başlat ikinci bir sunucu açar, durdur hiçbir şeyi durdurmazdı.
+ */
+function ownSpelling(folderPath: string): string {
+    const known = [...runner.runningPaths(), ...tree.localTargets().map((target) => target.path)];
+
+    return known.find((own) => samePath(own, folderPath)) ?? folderPath;
 }
 
 /** Claude Code oturum kimliği: `~/.claude/projects/…/<kimlik>.jsonl`. */
@@ -548,7 +559,7 @@ async function openNodeUrl(node: ProjectNode): Promise<void> {
 async function focusWindow(node: ProjectNode): Promise<void> {
     claude.markSeen(node.state.folderPath);
 
-    const local = tree.localTargets().some((target) => target.path === node.state.folderPath);
+    const local = tree.localTargets().some((target) => samePath(target.path, node.state.folderPath));
 
     if (local) {
         return;

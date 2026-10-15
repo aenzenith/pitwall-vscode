@@ -48,13 +48,36 @@ export type WindowRecord = {
 };
 
 /**
+ * İki yol aynı klasör mü (PROTOCOL.md kural 3). Windows'ta harf büyüklüğü ve `/` ile `\` farkı
+ * sayılmaz, sondaki ayraç atılır (sürücü kökü hariç): VS Code `c:\…`, uygulama ve Claude Code
+ * `C:\…` yazar. Başka yerde yol olduğu gibi karşılaştırılır.
+ */
+export function samePath(a: string, b: string): boolean {
+    return a === b || pathKey(a) === pathKey(b);
+}
+
+function pathKey(folderPath: string): string {
+    if (process.platform !== 'win32') {
+        return folderPath;
+    }
+
+    let key = folderPath.replace(/\//g, '\\').toLowerCase();
+
+    while (key.length > 3 && key.endsWith('\\')) {
+        key = key.slice(0, -1);
+    }
+
+    return key;
+}
+
+/**
  * Kaydın sahiplendiği projeler. `roots` yoksa (eski sürüm) kayıt favorileri de
  * kendi projesi gibi yayınlamış olabilir; o yüzden yalnız gerçekten çalışanlar sayılır.
  */
 export function ownedProjects(record: WindowRecord): ProjectState[] {
     if (Array.isArray(record.roots)) {
         return record.projects.filter(
-            (project) => record.roots?.includes(project.folderPath) || project.running,
+            (project) => record.roots?.some((root) => samePath(root, project.folderPath)) || project.running,
         );
     }
 
@@ -74,7 +97,7 @@ export function locate(
     let owner: { record: WindowRecord; project: ProjectState } | undefined;
 
     for (const record of peers) {
-        const project = ownedProjects(record).find((item) => item.folderPath === folderPath);
+        const project = ownedProjects(record).find((item) => samePath(item.folderPath, folderPath));
 
         if (project?.running) {
             return { record, project };
@@ -241,7 +264,7 @@ export class Registry extends EventEmitter {
     /** Verilen klasörü açık tutan pencereyi bulur. */
     public findWindowFor(folderPath: string): WindowRecord | undefined {
         return this.readPeers().find((record) =>
-            ownedProjects(record).some((project) => project.folderPath === folderPath),
+            ownedProjects(record).some((project) => samePath(project.folderPath, folderPath)),
         );
     }
 
@@ -251,7 +274,7 @@ export class Registry extends EventEmitter {
      */
     public findRunnerFor(folderPath: string): { record: WindowRecord; project: ProjectState } | undefined {
         for (const record of this.readPeers()) {
-            const project = record.projects.find((item) => item.folderPath === folderPath && item.running);
+            const project = record.projects.find((item) => samePath(item.folderPath, folderPath) && item.running);
 
             if (project) {
                 return { record, project };
@@ -353,9 +376,9 @@ export class Registry extends EventEmitter {
 
     public toggleFavorite(favorite: Favorite): boolean {
         const current = this.readFavorites();
-        const exists = current.some((item) => item.path === favorite.path);
+        const exists = current.some((item) => samePath(item.path, favorite.path));
         const next = exists
-            ? current.filter((item) => item.path !== favorite.path)
+            ? current.filter((item) => !samePath(item.path, favorite.path))
             : [...current, favorite].sort((a, b) => a.name.localeCompare(b.name, 'tr'));
 
         try {

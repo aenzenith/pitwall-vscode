@@ -2,7 +2,7 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 
 import type { ClaudeTurn, ClaudeWatch } from './claude';
-import { locate, ownedProjects, type Favorite, type ProjectState, type Registry } from './registry';
+import { locate, ownedProjects, samePath, type Favorite, type ProjectState, type Registry } from './registry';
 import type { DevRunner, Target } from './runner';
 import { targetFromFolder, targetFromPath } from './runner';
 
@@ -68,12 +68,10 @@ export class DevTree implements vscode.TreeDataProvider<Node> {
     /** Panelde görünen her satırın hedefi — favoriler dahil. */
     public allTargets(): Target[] {
         const targets = this.localTargets();
-        const seen = new Set(targets.map((target) => target.path));
 
         for (const favorite of this.registry.readFavorites()) {
-            if (!seen.has(favorite.path)) {
+            if (!targets.some((target) => samePath(target.path, favorite.path))) {
                 targets.push(targetFromPath(favorite.path, favorite.name));
-                seen.add(favorite.path);
             }
         }
 
@@ -142,20 +140,25 @@ export class DevTree implements vscode.TreeDataProvider<Node> {
 
     private projectsOf(scope: string): ProjectNode[] {
         const favorites = this.registry.readFavorites();
-        const isFavorite = (folderPath: string): boolean => favorites.some((item) => item.path === folderPath);
-        const localPaths = new Set(this.localTargets().map((target) => target.path));
+        const isFavorite = (folderPath: string): boolean => favorites.some((item) => samePath(item.path, folderPath));
+        const local = this.localTargets();
+        const isLocal = (folderPath: string): boolean => local.some((target) => samePath(target.path, folderPath));
+        /** Klasör burada çalışıyorsa koşunun yolu: kökün yazılışıyla ya da başkasıyla (favoriden kalktı). */
+        const runningHere = (folderPath: string): string | undefined =>
+            this.runner.runningPaths().find((running) => samePath(running, folderPath));
         const peers = this.registry.readPeers();
 
         if (scope === 'local') {
-            const nodes = this.localTargets().map((target): ProjectNode => {
+            const nodes = local.map((target): ProjectNode => {
                 // Bu pencerenin kökü başka yerde (ör. Pitwall uygulamasında) çalışıyorsa onu göster;
                 // düğmeler oraya gider, aynı proje iki kez başlatılmaz.
-                const elsewhere = this.runner.isRunning(target.path) ? undefined : this.registry.findRunnerFor(target.path);
+                const here = runningHere(target.path);
+                const elsewhere = here ? undefined : this.registry.findRunnerFor(target.path);
 
                 return {
                     kind: 'project',
                     scope: 'local',
-                    state: elsewhere?.project ?? this.runner.stateOf(target),
+                    state: elsewhere?.project ?? this.runner.stateOf(here ? { ...target, path: here } : target),
                     favorite: isFavorite(target.path),
                     windowId: elsewhere?.record.windowId,
                     windowTitle: elsewhere?.record.title,
@@ -165,7 +168,7 @@ export class DevTree implements vscode.TreeDataProvider<Node> {
             // Burada çalışan ama ne kök ne favori olan proje (çalışırken favoriden çıkarıldı):
             // satırı kaybolmasın, durdurulabilsin.
             for (const folderPath of this.runner.runningPaths()) {
-                if (!localPaths.has(folderPath) && !isFavorite(folderPath)) {
+                if (!isLocal(folderPath) && !isFavorite(folderPath)) {
                     nodes.push({
                         kind: 'project',
                         scope: 'local',
@@ -180,26 +183,26 @@ export class DevTree implements vscode.TreeDataProvider<Node> {
 
         if (scope === 'favorite') {
             return favorites
-                .filter((favorite) => !localPaths.has(favorite.path))
+                .filter((favorite) => !isLocal(favorite.path))
                 .map((favorite) => this.remoteOrClosed(favorite, peers, true));
         }
 
         const nodes: ProjectNode[] = [];
-        const seen = new Set<string>();
+        const seen: string[] = [];
 
         for (const peer of peers) {
             for (const { folderPath } of ownedProjects(peer)) {
                 // Burada çalışan proje "Bu pencere"de durur; iki katılımcının sahiplendiği tek satırdır.
                 if (
-                    localPaths.has(folderPath) ||
+                    isLocal(folderPath) ||
                     isFavorite(folderPath) ||
-                    seen.has(folderPath) ||
-                    this.runner.isRunning(folderPath)
+                    seen.some((known) => samePath(known, folderPath)) ||
+                    runningHere(folderPath)
                 ) {
                     continue;
                 }
 
-                seen.add(folderPath);
+                seen.push(folderPath);
 
                 const place = locate(peers, folderPath);
 

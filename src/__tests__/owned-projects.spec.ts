@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { ownedProjects, type ProjectState, type WindowRecord } from '../registry';
+import { locate, ownedProjects, samePath, type ProjectState, type WindowRecord } from '../registry';
 
 function project(folderPath: string, running = false): ProjectState {
     return { folderPath, name: folderPath.split('/').pop() ?? folderPath, running };
@@ -52,5 +52,27 @@ describe('ownedProjects', () => {
         });
 
         expect(ownedProjects(peer).map((item) => item.folderPath)).toEqual(['/projects/pitlane-docs']);
+    });
+});
+
+describe('samePath', () => {
+    // Windows'ta VS Code kökü `c:\…`, uygulama aynı klasörü `C:\…` yazar: aynı proje sayılmazsa
+    // uygulamada çalışan sunucu burada durmuş görünür ve başlat ikinci sunucu açar.
+    it('Windows\'ta harf ve ayraç farkını saymaz, başka yerde yolu olduğu gibi karşılaştırır', () => {
+        const platform = Object.getOwnPropertyDescriptor(process, 'platform') as PropertyDescriptor;
+
+        Object.defineProperty(process, 'platform', { value: 'win32' });
+
+        try {
+            const app = record({ windowId: 'app', roots: [], projects: [project('C:\\work\\paddock', true)] });
+
+            expect(locate([app], 'c:\\work\\paddock')?.record.windowId).toBe('app');
+            expect(samePath('c:/work/paddock/', 'C:\\Work\\Paddock')).toBe(true);
+            expect(samePath('C:\\work\\paddock', 'C:\\work\\paddock-docs')).toBe(false);
+        } finally {
+            Object.defineProperty(process, 'platform', platform);
+        }
+
+        expect(samePath('/Users/me/paddock', '/users/me/paddock')).toBe(false);
     });
 });
