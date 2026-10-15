@@ -44,6 +44,11 @@ type Run = {
     timer?: ReturnType<typeof setTimeout>;
     url?: string;
     port?: number;
+    /**
+     * Bilerek durduruldu: çıkışı çökme sayılmaz. Çıkış olayı `stop` bittikten sonra da gelebilir
+     * (TERM'den sonra KILL giden grup); o yüzden proje değil koşu işaretlenir.
+     */
+    stopped?: boolean;
 };
 
 /** Az önce dağıtılan port yeniden dağıtılmasın: sunucu henüz dinlemeye başlamamış olabilir. */
@@ -90,11 +95,14 @@ export class DevRunner {
     /** Dolu porttan kurtarma denemesi yapılmış projeler. */
     private readonly retried = new Set<string>();
 
-    /** Bu oturumda dağıtılmış portlar: port -> dağıtım anı. */
-    private readonly reserved = new Map<number, number>();
+    /** Bu oturumda dağıtılmış portlar: port -> dağıtım anı ve alan proje. */
+    private readonly reserved = new Map<number, { at: number; folderPath: string }>();
 
-    /** Bilerek durdurulanlar: çıkış olayı çökme sayılmasın. */
-    private readonly stopping = new Set<string>();
+    /**
+     * Başlatılmakta olanlar. Kontrol ile `runs`a yazılma arasında birkaç await var; bu arada gelen
+     * ikinci başlatma (iki tık, art arda iki reload) ikinci bir sunucu açar, biri sahipsiz kalırdı.
+     */
+    private readonly starting = new Set<string>();
 
     /** Art arda başarısız otomatik yeniden başlatma sayısı: proje -> deneme. */
     private readonly attempts = new Map<string, number>();
@@ -170,6 +178,20 @@ export class DevRunner {
 
     /** Elle başlatmadan farkı: başarısızlık sayacına dokunmaz. Otomatik kurtarma buradan geçer. */
     private async launch(target: Target, openUrl: boolean, extraArgs: readonly string[] = []): Promise<void> {
+        if (this.starting.has(target.path)) {
+            return;
+        }
+
+        this.starting.add(target.path);
+
+        try {
+            await this.spawnRun(target, openUrl, extraArgs);
+        } finally {
+            this.starting.delete(target.path);
+        }
+    }
+
+    private async spawnRun(target: Target, openUrl: boolean, extraArgs: readonly string[]): Promise<void> {
         if (this.runs.has(target.path)) {
             this.reveal(target.path);
 
@@ -243,7 +265,7 @@ export class DevRunner {
 
         child.once('error', (error: Error) => {
             channel.appendLine(`\n[pitwall] ${vscode.l10n.t('could not start: {0}', error.message)}`);
-            this.forget(target.path);
+            this.forget(target.path, run);
         });
 
         child.once('exit', (code, signal) => {
@@ -251,9 +273,9 @@ export class DevRunner {
                 `\n[pitwall] ${vscode.l10n.t('process ended (code {0}, signal {1})', String(code ?? '-'), String(signal ?? '-'))}`,
             );
 
-            const planned = this.stopping.has(target.path);
+            const planned = run.stopped === true;
 
-            this.forget(target.path);
+            this.forget(target.path, run);
 
             if (!planned && !this.disposed) {
                 void this.handleCrash(target, run, code, signal);
@@ -275,7 +297,7 @@ export class DevRunner {
             return;
         }
 
-        this.stopping.add(folderPath);
+        run.stopped = true;
         this.busy.add(folderPath);
         this.issues.delete(folderPath);
         this.onChange();
@@ -283,9 +305,8 @@ export class DevRunner {
         try {
             await this.kill(run, folderPath);
         } finally {
-            this.forget(folderPath);
+            this.forget(folderPath, run);
             this.busy.delete(folderPath);
-            this.stopping.delete(folderPath);
             this.onChange();
         }
     }
@@ -579,7 +600,7 @@ export class DevRunner {
             return;
         }
 
-        const free = await this.reserveFreePort(conflict.port + 1);
+        const free = await this.reserveFreePort(conflict.port + 1, target.path);
 
         if (!free) {
             return;
@@ -626,15 +647,18 @@ export class DevRunner {
         }
     }
 
-    private forget(folderPath: string): void {
-        const run = this.runs.get(folderPath);
+    /**
+     * Koşuyu bırakır. Yalnız o koşu: durdurma beklerken aynı projenin yeni koşusu başlamış
+     * olabilir, o yerinde kalır (yoksa sunucusu sahipsiz kalırdı).
+     */
+    private forget(folderPath: string, run: Run): void {
+        this.clearTimer(run);
+        run.mirror?.remove();
 
-        if (!run) {
+        if (this.runs.get(folderPath) !== run) {
             return;
         }
 
-        this.clearTimer(run);
-        run.mirror?.remove();
         this.runs.delete(folderPath);
         this.onChange();
     }
@@ -668,7 +692,7 @@ export class DevRunner {
      */
     private async freePortArgs(target: Target, config: vscode.WorkspaceConfiguration): Promise<string[]> {
         const base = await this.basePort(target, config);
-        const free = await this.reserveFreePort(base);
+        const free = await this.reserveFreePort(base, target.path);
 
         if (!free || free === base) {
             return [];
@@ -680,11 +704,12 @@ export class DevRunner {
     /**
      * Dinlenmeyen ve bu oturumda az önce dağıtılmamış ilk portu bulur.
      * Toplu başlatmada sunucular henüz dinlemeye başlamadığı için yalnız sokete bakmak yetmez.
+     * Projenin kendi ayırdığı port ona yine verilir: yeniden başlatılan sunucu aynı adreste kalır.
      */
-    private async reserveFreePort(from: number): Promise<number | undefined> {
+    private async reserveFreePort(from: number, folderPath: string): Promise<number | undefined> {
         const now = Date.now();
 
-        for (const [port, at] of this.reserved) {
+        for (const [port, { at }] of this.reserved) {
             if (now - at > RESERVATION_MS) {
                 this.reserved.delete(port);
             }
@@ -699,8 +724,10 @@ export class DevRunner {
                 return undefined;
             }
 
-            if (!this.reserved.has(free)) {
-                this.reserved.set(free, Date.now());
+            const holder = this.reserved.get(free)?.folderPath;
+
+            if (holder === undefined || holder === folderPath) {
+                this.reserved.set(free, { at: Date.now(), folderPath });
 
                 return free;
             }
