@@ -48,3 +48,48 @@ export function writeAtomic(file: string, content: string): void {
     fs.writeFileSync(temp, content, 'utf8');
     fs.renameSync(temp, file);
 }
+
+/**
+ * Çözülemeyen bir kaydı, üstüne yazılmadan önce `<dosya>.broken-<ms>` adıyla kenara alır; o ad
+ * alınmışsa `-1`, `-2`… eklenir, önceki bir kopya hiç ezilmez. Uygulama da aynı adı verir
+ * (`settings::set_aside`). Kenara alınamazsa false: o zaman dosyaya hiçbir şey yazılmaz.
+ */
+export function setAside(file: string): boolean {
+    const stamp = Date.now();
+
+    for (let attempt = 0; attempt < 100; attempt++) {
+        const backup = `${file}.broken-${stamp}${attempt === 0 ? '' : `-${attempt}`}`;
+
+        // Sabit bağ var olan bir dosyanın yerine geçmez, hata verir; sonra asıl ad kalkar.
+        try {
+            fs.linkSync(file, backup);
+        } catch (error) {
+            if ((error as NodeJS.ErrnoException).code === 'EEXIST') {
+                continue;
+            }
+
+            // Sabit bağ kurulamayan yerde taşınır, ad boşsa.
+            try {
+                if (fs.existsSync(backup)) {
+                    return false;
+                }
+
+                fs.renameSync(file, backup);
+
+                return true;
+            } catch {
+                return false;
+            }
+        }
+
+        try {
+            fs.unlinkSync(file);
+
+            return true;
+        } catch {
+            return false;
+        }
+    }
+
+    return false;
+}

@@ -3,7 +3,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 
-import { writeAtomic } from './storage';
+import { setAside, writeAtomic } from './storage';
 
 /**
  * Satırda gösterilecek sorun notu.
@@ -371,15 +371,24 @@ export class Registry extends EventEmitter {
     }
 
     public readFavorites(): Favorite[] {
-        return readJson<Favorite[]>(this.favoritesFile) ?? [];
+        return readFavoritesFile(this.favoritesFile) ?? [];
     }
 
+    /**
+     * Favoriyi ekler ya da çıkarır. Okunamayan ya da çözülemeyen bir `favorites.json`'ın üstüne
+     * yazılmaz: önce kenara alınır (`setAside`), alınamazsa hiçbir şey yazılmaz.
+     */
     public toggleFavorite(favorite: Favorite): boolean {
-        const current = this.readFavorites();
+        const read = readFavoritesFile(this.favoritesFile);
+        const current = read ?? [];
         const exists = current.some((item) => samePath(item.path, favorite.path));
         const next = exists
             ? current.filter((item) => !samePath(item.path, favorite.path))
             : [...current, favorite].sort((a, b) => a.name.localeCompare(b.name, 'tr'));
+
+        if (read === undefined && !setAside(this.favoritesFile)) {
+            return exists;
+        }
 
         try {
             writeAtomic(this.favoritesFile, JSON.stringify(next, null, 2));
@@ -536,6 +545,28 @@ function writtenAt(file: string): number {
 function readJson<T>(file: string): T | undefined {
     try {
         return JSON.parse(fs.readFileSync(file, 'utf8')) as T;
+    } catch {
+        return undefined;
+    }
+}
+
+/**
+ * `favorites.json`'daki liste: dosya yoksa boş, okunamıyor ya da bir liste çıkmıyorsa
+ * `undefined`. Editörün başa koyduğu bayt sırası işareti listeden sayılmaz.
+ */
+function readFavoritesFile(file: string): Favorite[] | undefined {
+    let text: string;
+
+    try {
+        text = fs.readFileSync(file, 'utf8');
+    } catch (error) {
+        return (error as NodeJS.ErrnoException).code === 'ENOENT' ? [] : undefined;
+    }
+
+    try {
+        const list: unknown = JSON.parse(text.replace(/^\uFEFF/, ''));
+
+        return Array.isArray(list) ? (list as Favorite[]) : undefined;
     } catch {
         return undefined;
     }
