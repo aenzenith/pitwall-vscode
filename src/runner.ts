@@ -14,7 +14,7 @@ import {
     extractLocalUrl,
     hasScript,
     herdFallbackUrl,
-    isForbiddenScript,
+    isUnsafeScript,
     parseAppUrl,
     parseVitePort,
     type PackageManager,
@@ -201,7 +201,7 @@ export class DevRunner {
         const config = vscode.workspace.getConfiguration('pitwall', target.uri);
         const script = config.get<string>('script', 'dev');
 
-        if (isForbiddenScript(script)) {
+        if (isUnsafeScript(script)) {
             void vscode.window.showErrorMessage(vscode.l10n.t('Pitwall will not run this script: "{0}"', script));
 
             return;

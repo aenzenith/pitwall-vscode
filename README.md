@@ -19,7 +19,6 @@
 - **Opens your app, not the vite port** — `↗` opens `APP_URL` from `.env`, or `https://<folder>.test` for Laravel projects.
 - **Auto start** — when a window opens, bring back what was running, your favourites or every root folder.
 - **No orphans** — closing a window stops its servers, and leftovers from a crashed window are cleaned up on the next start.
-- **`build` is never run** — a production build would break the dev server you have open.
 - macOS, Linux and Windows. English and Turkish.
 
 ### Status icons
@@ -69,7 +68,7 @@ The bulk commands cover every window; work for another window's project is hande
 
 | Setting | Default | Description |
 |---|---|---|
-| `pitwall.script` | `dev` | npm script to run. Names starting with `build` are rejected. |
+| `pitwall.script` | `dev` | npm script to run. |
 | `pitwall.packageManager` | `auto` | `npm`, `pnpm`, `yarn` or `bun`. `auto` reads the lock file. |
 | `pitwall.port` | `0` | Port to use. `0` = `server.port` from `vite.config`, otherwise 5173; without a `vite.config`, the one the script picks. |
 | `pitwall.autoStart` | `lastSession` | What to start when the window opens: `lastSession`, `favorites`, `workspace` or `off`. |

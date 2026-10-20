@@ -41,28 +41,21 @@ export function detectPackageManager(files: readonly string[]): PackageManager {
 }
 
 /**
- * `build` ile başlayan ya da kabuk için güvensiz script adlarını reddeder.
- * Production build çalıştırmak bilerek engellenmiştir: açık dev sunucusunu bozuyor.
+ * Kabuk için güvensiz script adlarını reddeder: ad, komut satırına olduğu gibi girer.
  */
-export function isForbiddenScript(script: string): boolean {
-    const name = script.trim();
-
-    if (!SAFE_SCRIPT.test(name)) {
-        return true;
-    }
-
-    return name.toLowerCase().startsWith('build');
+export function isUnsafeScript(script: string): boolean {
+    return !SAFE_SCRIPT.test(script.trim());
 }
 
 /**
  * Terminale yazılacak komutu üretir.
  *
- * @throws Error Script adı yasaklıysa.
+ * @throws Error Script adı kabuk için güvensizse.
  */
 export function buildCommand(manager: PackageManager, script: string, args: readonly string[] = []): string {
     const name = script.trim();
 
-    if (isForbiddenScript(name)) {
+    if (isUnsafeScript(name)) {
         throw new Error(`Pitwall will not run this script: "${script}"`);
     }
 

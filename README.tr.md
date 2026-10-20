@@ -19,7 +19,6 @@
 - **Vite portunu değil, uygulamanı açar** — `↗`, `.env` içindeki `APP_URL`'i ya da Laravel projesinde `https://<klasör>.test` adresini açar.
 - **Otomatik başlat** — pencere açılınca çalışanları geri kaldırır; ya da favorileri, ya da bütün kök klasörleri.
 - **Öksüz süreç kalmaz** — pencere kapanınca sunucuları durur; çöken pencereden kalanlar bir sonraki açılışta temizlenir.
-- **`build` asla çalışmaz** — production build açık dev sunucusunu bozar.
 - macOS, Linux ve Windows. Türkçe ve İngilizce.
 
 ### Durum ikonları
@@ -69,7 +68,7 @@ Toplu komutlar bütün pencereleri kapsar; başka pencerenin projesi için iş o
 
 | Ayar | Varsayılan | Açıklama |
 |---|---|---|
-| `pitwall.script` | `dev` | Çalıştırılacak npm script'i. `build` ile başlayanlar reddedilir. |
+| `pitwall.script` | `dev` | Çalıştırılacak npm script'i. |
 | `pitwall.packageManager` | `auto` | `npm`, `pnpm`, `yarn` ya da `bun`. `auto` lock dosyasına bakar. |
 | `pitwall.port` | `0` | Kullanılacak port. `0` = `vite.config` içindeki `server.port`, yoksa 5173; `vite.config` yoksa script'in seçtiği. |
 | `pitwall.autoStart` | `lastSession` | Pencere açılınca ne başlasın: `lastSession`, `favorites`, `workspace` ya da `off`. |

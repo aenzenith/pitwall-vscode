@@ -4,7 +4,7 @@ import {
     buildCommand,
     detectPackageManager,
     hasScript,
-    isForbiddenScript,
+    isUnsafeScript,
     pickFolder,
 } from '../resolve';
 
@@ -26,23 +26,17 @@ describe('detectPackageManager', () => {
     });
 });
 
-describe('isForbiddenScript', () => {
-    it('build ile başlayan adları reddeder', () => {
-        expect(isForbiddenScript('build')).toBe(true);
-        expect(isForbiddenScript('build:ssr')).toBe(true);
-        expect(isForbiddenScript('  BUILD  ')).toBe(true);
-    });
-
+describe('isUnsafeScript', () => {
     it('kabuk için güvensiz adları reddeder', () => {
-        expect(isForbiddenScript('dev && rm -rf /')).toBe(true);
-        expect(isForbiddenScript('dev; npm run build')).toBe(true);
-        expect(isForbiddenScript('')).toBe(true);
+        expect(isUnsafeScript('dev && rm -rf /')).toBe(true);
+        expect(isUnsafeScript('dev; npm run build')).toBe(true);
+        expect(isUnsafeScript('')).toBe(true);
     });
 
     it('normal script adlarına izin verir', () => {
-        expect(isForbiddenScript('dev')).toBe(false);
-        expect(isForbiddenScript('dev:ssr')).toBe(false);
-        expect(isForbiddenScript('start-server')).toBe(false);
+        expect(isUnsafeScript('dev')).toBe(false);
+        expect(isUnsafeScript('dev:ssr')).toBe(false);
+        expect(isUnsafeScript('start-server')).toBe(false);
     });
 });
 
@@ -53,8 +47,8 @@ describe('buildCommand', () => {
         expect(buildCommand('bun', ' dev ')).toBe('bun run dev');
     });
 
-    it('yasak script için hata atar', () => {
-        expect(() => buildCommand('npm', 'build')).toThrow(/will not run/);
+    it('güvensiz script için hata atar', () => {
+        expect(() => buildCommand('npm', 'dev && rm -rf /')).toThrow(/will not run/);
     });
 });
 
