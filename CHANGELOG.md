@@ -4,6 +4,14 @@ All notable changes to this extension are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and releases are cut
 by release-please from Conventional Commits.
 
+## [1.1.2](https://github.com/aenzenith/pitwall-vscode/compare/v1.1.1...v1.1.2) (2026-10-21)
+
+
+### Bug Fixes
+
+* **registry:** a damaged favourites file is set aside, never written over ([ca8117e](https://github.com/aenzenith/pitwall-vscode/commit/ca8117e44bff66d7d8176d3d26f55dd85bd6791c))
+* **runner:** a script named build runs like any other ([ef97dcb](https://github.com/aenzenith/pitwall-vscode/commit/ef97dcbd94740ca429aee62746c97dbb6cedbeeb))
+
 ## [1.1.1](https://github.com/aenzenith/pitwall-vscode/compare/v1.1.0...v1.1.1) (2026-10-15)
 
 
