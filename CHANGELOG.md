@@ -4,6 +4,13 @@ All notable changes to this extension are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and releases are cut
 by release-please from Conventional Commits.
 
+## [1.2.0](https://github.com/aenzenith/pitwall-vscode/compare/v1.1.2...v1.2.0) (2026-10-22)
+
+
+### Features
+
+* **runner:** a project whose app sits in a subfolder runs its dev server there ([0ac5f50](https://github.com/aenzenith/pitwall-vscode/commit/0ac5f508251d89ec6f7fc2a2a97729ce4794b8c4))
+
 ## [1.1.2](https://github.com/aenzenith/pitwall-vscode/compare/v1.1.1...v1.1.2) (2026-10-21)
 
 
