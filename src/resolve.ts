@@ -2,6 +2,9 @@
  * Saf karar mantığı. Burada `vscode` import EDİLMEZ; test edilebilir kalsın.
  */
 
+import * as fs from 'fs';
+import * as path from 'path';
+
 export type PackageManager = 'npm' | 'pnpm' | 'yarn' | 'bun';
 
 export type FolderLike = {
@@ -90,6 +93,48 @@ export function hasScript(raw: string, script: string): boolean {
     }
 
     return typeof (scripts as Record<string, unknown>)[script.trim()] === 'string';
+}
+
+/**
+ * Dev sunucusunun çalışacağı klasör (`pitwall.workingFolder`): uygulaması bir alt klasörde duran
+ * proje için. Ayar projenin klasörüne göre okunur; mutlak yol da olur, projenin içindeyse. Boş
+ * ayar projenin kendi klasörüdür, ona bakılmaz.
+ *
+ * Bağlantılar ve `..` izlenir (iki yolun da gerçek hâli): proje dışına çıkan, olmayan ya da klasör
+ * olmayan yol reddedilir. Dönen yol projenin verilen yazılışıyla başlar.
+ *
+ * @param folderPath Projenin (workspace kökünün) yolu.
+ * @param setting Ayarın ham değeri.
+ * @returns Kullanılacak klasör; reddedildiyse undefined.
+ */
+export function resolveWorkingFolder(folderPath: string, setting: string | undefined): string | undefined {
+    const wanted = (setting ?? '').trim();
+
+    if (wanted === '') {
+        return folderPath;
+    }
+
+    let inner: string;
+
+    try {
+        const root = fs.realpathSync.native(folderPath);
+        const real = fs.realpathSync.native(path.resolve(folderPath, wanted));
+
+        if (!fs.statSync(real).isDirectory()) {
+            return undefined;
+        }
+
+        inner = path.relative(root, real);
+    } catch {
+        return undefined;
+    }
+
+    // Başka sürücü (Windows) mutlak yol olarak döner; `..` ile başlayan ad (`..eski`) içeridedir.
+    if (inner === '..' || inner.startsWith(`..${path.sep}`) || path.isAbsolute(inner)) {
+        return undefined;
+    }
+
+    return inner === '' ? folderPath : path.join(folderPath, inner);
 }
 
 /**

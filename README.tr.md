@@ -69,6 +69,7 @@ Toplu komutlar bütün pencereleri kapsar; başka pencerenin projesi için iş o
 | Ayar | Varsayılan | Açıklama |
 |---|---|---|
 | `pitwall.script` | `dev` | Çalıştırılacak npm script'i. |
+| `pitwall.workingFolder` | `""` | Uygulama bir alt klasördeyse dev sunucusunun çalışacağı klasör, projeye göre (ör. `project`). `package.json`, lock dosyası, `vite.config` ve `.env` de oradan okunur. Boşsa projenin kendi klasörü; proje dışını gösteren yol reddedilir. |
 | `pitwall.packageManager` | `auto` | `npm`, `pnpm`, `yarn` ya da `bun`. `auto` lock dosyasına bakar. |
 | `pitwall.port` | `0` | Kullanılacak port. `0` = `vite.config` içindeki `server.port`, yoksa 5173; `vite.config` yoksa script'in seçtiği. |
 | `pitwall.autoStart` | `lastSession` | Pencere açılınca ne başlasın: `lastSession`, `favorites`, `workspace` ya da `off`. |

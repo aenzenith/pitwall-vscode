@@ -6,7 +6,7 @@ import { hasScript, pickFolder } from './resolve';
 import { killOrphan } from './process';
 import { adoptOldStorage, OLD_EXTENSION_ID, sharedDir } from './storage';
 import { ownedProjects, Registry, samePath, type RemoteCommand } from './registry';
-import { DevRunner, type Target, targetFromFolder, targetFromPath } from './runner';
+import { DevRunner, type Target, targetFromFolder, targetFromPath, workingFolderOf } from './runner';
 import { DevTree, favoriteOf, type ProjectNode } from './tree';
 
 const LAST_FOLDER_KEY = 'pitwall.lastFolderPath';
@@ -22,7 +22,10 @@ let claudeItem: vscode.StatusBarItem;
 let claude: ClaudeWatch;
 let state: vscode.Memento;
 
-/** folderPath|script -> script var mı. package.json değişince temizlenir. */
+/**
+ * çalışma klasörü|script -> script var mı. package.json ya da bir `pitwall` ayarı (çalışma klasörü
+ * dahil) değişince temizlenir.
+ */
 const scriptCache = new Map<string, boolean>();
 
 let refreshToken = 0;
@@ -692,8 +695,15 @@ async function scriptAvailable(folder: vscode.WorkspaceFolder, script: string): 
     return scriptAvailableAt(targetFromFolder(folder), script);
 }
 
+/** Script çalışma klasörünün package.json'ında aranır; klasör reddedilmişse yok sayılır. */
 async function scriptAvailableAt(target: Target, script: string): Promise<boolean> {
-    const key = `${target.path}|${script}`;
+    const work = workingFolderOf(target);
+
+    if (!work) {
+        return false;
+    }
+
+    const key = `${work.path}|${script}`;
     const cached = scriptCache.get(key);
 
     if (cached !== undefined) {
@@ -703,7 +713,7 @@ async function scriptAvailableAt(target: Target, script: string): Promise<boolea
     let available = false;
 
     try {
-        const raw = await vscode.workspace.fs.readFile(vscode.Uri.joinPath(target.uri, 'package.json'));
+        const raw = await vscode.workspace.fs.readFile(vscode.Uri.joinPath(work.uri, 'package.json'));
         available = hasScript(Buffer.from(raw).toString('utf8'), script);
     } catch {
         available = false;

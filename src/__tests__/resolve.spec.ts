@@ -1,4 +1,7 @@
-import { describe, expect, it } from 'vitest';
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import {
     buildCommand,
@@ -6,6 +9,7 @@ import {
     hasScript,
     isUnsafeScript,
     pickFolder,
+    resolveWorkingFolder,
 } from '../resolve';
 
 describe('detectPackageManager', () => {
@@ -107,5 +111,60 @@ describe('pickFolder', () => {
     it('çok köklü workspace ve ipucu yoksa seçim yapmaz', () => {
         expect(pickFolder(undefined, folders)).toBeUndefined();
         expect(pickFolder('/baska/yer/x.ts', [])).toBeUndefined();
+    });
+});
+
+describe('resolveWorkingFolder', () => {
+    let base: string;
+    let project: string;
+    let outside: string;
+
+    beforeEach(() => {
+        // macOS'ta tmpdir kendisi de bir bağlantının altında: projenin yazılışı korunmalı.
+        base = fs.mkdtempSync(path.join(os.tmpdir(), 'pitwall-workdir-'));
+        project = path.join(base, 'hotelslov.com');
+        outside = path.join(base, 'outside');
+        fs.mkdirSync(path.join(project, 'project'), { recursive: true });
+        fs.mkdirSync(outside);
+        fs.writeFileSync(path.join(project, 'package.json'), '{}');
+        // `junction`: Windows'ta yönetici izni istemez, başka yerde yok sayılır.
+        fs.symlinkSync(outside, path.join(project, 'escape'), 'junction');
+    });
+
+    afterEach(() => {
+        fs.rmSync(base, { recursive: true, force: true });
+    });
+
+    it('boş ayar projenin kendi klasörüdür', () => {
+        expect(resolveWorkingFolder(project, '')).toBe(project);
+        expect(resolveWorkingFolder(project, '   ')).toBe(project);
+        expect(resolveWorkingFolder(project, undefined)).toBe(project);
+    });
+
+    it('projenin içindeki klasörü göreli ya da mutlak yolla kabul eder', () => {
+        const inner = path.join(project, 'project');
+
+        expect(resolveWorkingFolder(project, 'project')).toBe(inner);
+        expect(resolveWorkingFolder(project, ' project ')).toBe(inner);
+        expect(resolveWorkingFolder(project, inner)).toBe(inner);
+    });
+
+    it('`..` ile proje dışına çıkanı reddeder', () => {
+        expect(resolveWorkingFolder(project, '../outside')).toBeUndefined();
+        expect(resolveWorkingFolder(project, 'project/../../outside')).toBeUndefined();
+        expect(resolveWorkingFolder(project, outside)).toBeUndefined();
+        // Adı projeninkiyle başlayan komşu klasör içeride sayılmaz.
+        fs.mkdirSync(`${project}-eski`);
+        expect(resolveWorkingFolder(project, `${project}-eski`)).toBeUndefined();
+    });
+
+    it('projenin içinden dışarıyı gösteren bağlantıyı reddeder', () => {
+        expect(resolveWorkingFolder(project, 'escape')).toBeUndefined();
+        expect(resolveWorkingFolder(project, path.join(project, 'escape'))).toBeUndefined();
+    });
+
+    it('olmayan ya da klasör olmayan yolu reddeder', () => {
+        expect(resolveWorkingFolder(project, 'nope')).toBeUndefined();
+        expect(resolveWorkingFolder(project, 'package.json')).toBeUndefined();
     });
 });

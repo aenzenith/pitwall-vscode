@@ -284,6 +284,12 @@
                     "scope": "resource",
                     "markdownDescription": "%config.script%"
                 },
+                "pitwall.workingFolder": {
+                    "type": "string",
+                    "default": "",
+                    "scope": "resource",
+                    "markdownDescription": "%config.workingFolder%"
+                },
                 "pitwall.packageManager": {
                     "type": "string",
                     "enum": [

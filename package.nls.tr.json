@@ -22,6 +22,7 @@
     "command.removeFavorite": "Favorilerden çıkar",
     "command.showClaudePending": "Claude'un beklediği projeleri göster",
     "config.script": "Çalıştırılacak npm script'inin adı.",
+    "config.workingFolder": "Dev sunucusunun çalışacağı klasör; uygulaması bir alt klasörde duran projeler için. Projenin klasörüne göre yazılır (ör. `project`), boş bırakılırsa projenin kendi klasörü kullanılır. `package.json`, lock dosyası, `vite.config` ve `.env` de bu klasörden okunur. Mutlak yol ancak projenin klasörünün içini gösteriyorsa geçer.",
     "config.packageManager": "Paket yöneticisi. auto = lock dosyasından bulunur.",
     "config.port": "Projenin istediği port. `0` = otomatik: `vite.config` içindeki `server.port`, o da yoksa 5173. Port doluysa üstündeki ilk boş port kullanılır. Burada port ve `vite.config` yoksa script kendi seçtiği portta kalır.",
     "config.autoStart": "Pencere açılınca ne başlatılsın. Aynı projeyi başka pencere çalıştırıyorsa atlanır.",

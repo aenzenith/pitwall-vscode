@@ -17,6 +17,7 @@ import {
     isUnsafeScript,
     parseAppUrl,
     parseVitePort,
+    resolveWorkingFolder,
     type PackageManager,
 } from './resolve';
 
@@ -76,6 +77,31 @@ export function targetFromPath(folderPath: string, name?: string): Target {
         name: name ?? path.basename(folderPath),
         uri: vscode.Uri.file(folderPath),
     };
+}
+
+/**
+ * Dev sunucusunun çalıştığı klasör: `pitwall.workingFolder`, boşsa projenin kendisi; proje dışına
+ * çıkan ya da olmayan klasörde undefined (bkz. `resolveWorkingFolder`). Yalnız okunan ve
+ * çalıştırılan buradandır; anahtar, kayıt, favori ve Claude eşleşmesi projenin kendi yolunda kalır.
+ * Yol projenin yazılışıyla başlar; adres projeninkinden türer, uzak bağlantıda da aynı yere gider.
+ *
+ * @param setting Ayarın değeri; verilmezse projenin ayarından okunur.
+ */
+export function workingFolderOf(target: Target, setting?: string): Pick<Target, 'path' | 'uri'> | undefined {
+    const wanted = setting ?? vscode.workspace.getConfiguration('pitwall', target.uri).get<string>('workingFolder', '');
+    const dir = resolveWorkingFolder(target.path, wanted);
+
+    if (dir === undefined) {
+        return undefined;
+    }
+
+    const inner = path.relative(target.path, dir);
+
+    if (inner === '') {
+        return { path: target.path, uri: target.uri };
+    }
+
+    return { path: dir, uri: vscode.Uri.joinPath(target.uri, ...inner.split(path.sep)) };
 }
 
 /**
@@ -207,7 +233,22 @@ export class DevRunner {
             return;
         }
 
-        if (!(await this.scriptExists(target, script))) {
+        const setting = config.get<string>('workingFolder', '');
+        const work = workingFolderOf(target, setting);
+
+        if (!work) {
+            void vscode.window.showErrorMessage(
+                vscode.l10n.t(
+                    '{0}: the working folder "{1}" is not a folder inside the project.',
+                    target.name,
+                    setting.trim(),
+                ),
+            );
+
+            return;
+        }
+
+        if (!(await this.scriptExists(work.uri, script))) {
             void vscode.window.showErrorMessage(
                 vscode.l10n.t('{0}: package.json has no "{1}" script.', target.name, script),
             );
@@ -215,22 +256,22 @@ export class DevRunner {
             return;
         }
 
-        const manager = await this.resolvePackageManager(target, config);
-        const args = extraArgs.length > 0 ? extraArgs : await this.freePortArgs(target, config);
+        const manager = await this.resolvePackageManager(work.uri, config);
+        const args = extraArgs.length > 0 ? extraArgs : await this.freePortArgs(target, work.uri, config);
         const command = buildCommand(manager, script, args);
         const channel = this.channelFor(target);
 
         channel.clear();
         channel.appendLine(`$ ${command}`);
-        channel.appendLine(`  ${target.path}`);
+        channel.appendLine(`  ${work.path}`);
         channel.appendLine('');
 
-        const child = spawnShell(command, target.path);
+        const child = spawnShell(command, work.path);
         const startedAt = Date.now();
         const output = this.shared ? outputPath(this.shared.windowId, target.path, startedAt) : undefined;
         const mirror = this.shared && output ? new OutputMirror(path.join(this.shared.dir, output)) : undefined;
 
-        mirror?.append(`$ ${command}\n  ${target.path}\n\n`);
+        mirror?.append(`$ ${command}\n  ${work.path}\n\n`);
 
         const run: Run = {
             child,
@@ -692,8 +733,12 @@ export class DevRunner {
      * vite.config yok) `--port` verilmez: script kendi portunu seçer (Next, Nuxt, Astro dolu
      * porttan kendisi geçer), bazısı bu bayrağı reddeder.
      */
-    private async freePortArgs(target: Target, config: vscode.WorkspaceConfiguration): Promise<string[]> {
-        const base = await this.basePort(target, config);
+    private async freePortArgs(
+        target: Target,
+        work: vscode.Uri,
+        config: vscode.WorkspaceConfiguration,
+    ): Promise<string[]> {
+        const base = await this.basePort(work, config);
 
         if (base === undefined) {
             return [];
@@ -748,8 +793,10 @@ export class DevRunner {
     /**
      * Projenin istediği port: ayar > vite.config'teki `server.port` > Vite'ın kendi 5173'ü.
      * Ayarda portu ve vite.config'i olmayan proje port istemez: undefined.
+     *
+     * @param work Çalışma klasörü: vite.config orada aranır.
      */
-    private async basePort(target: Target, config: vscode.WorkspaceConfiguration): Promise<number | undefined> {
+    private async basePort(work: vscode.Uri, config: vscode.WorkspaceConfiguration): Promise<number | undefined> {
         const configured = config.get<number>('port', 0);
 
         if (Number.isInteger(configured) && configured > 0) {
@@ -760,7 +807,7 @@ export class DevRunner {
 
         for (const name of ['vite.config.ts', 'vite.config.js', 'vite.config.mts', 'vite.config.mjs']) {
             try {
-                const raw = await vscode.workspace.fs.readFile(vscode.Uri.joinPath(target.uri, name));
+                const raw = await vscode.workspace.fs.readFile(vscode.Uri.joinPath(work, name));
                 const port = parseVitePort(Buffer.from(raw).toString('utf8'));
 
                 vite = true;
@@ -780,7 +827,8 @@ export class DevRunner {
 
     /**
      * Açılacak adres. Sıra kesin: ayar > `.env` içindeki APP_URL > Herd varsayılanı
-     * (Laravel projesiyse) > sunucunun kendi adresi.
+     * (Laravel projesiyse) > sunucunun kendi adresi. `.env` ve `artisan` çalışma klasöründe
+     * aranır (reddedilmişse projenin kendisinde); Herd adı projenin klasör adıdır.
      */
     public async resolveUrl(target: Target, localUrl?: string): Promise<string | undefined> {
         const configured = vscode.workspace
@@ -792,22 +840,23 @@ export class DevRunner {
             return configured;
         }
 
-        const appUrl = await this.readAppUrl(target);
+        const work = workingFolderOf(target)?.uri ?? target.uri;
+        const appUrl = await this.readAppUrl(work);
 
         if (appUrl) {
             return appUrl;
         }
 
-        if (await this.fileExists(vscode.Uri.joinPath(target.uri, 'artisan'))) {
+        if (await this.fileExists(vscode.Uri.joinPath(work, 'artisan'))) {
             return herdFallbackUrl(path.basename(target.path));
         }
 
         return localUrl;
     }
 
-    private async readAppUrl(target: Target): Promise<string | undefined> {
+    private async readAppUrl(work: vscode.Uri): Promise<string | undefined> {
         try {
-            const raw = await vscode.workspace.fs.readFile(vscode.Uri.joinPath(target.uri, '.env'));
+            const raw = await vscode.workspace.fs.readFile(vscode.Uri.joinPath(work, '.env'));
 
             return parseAppUrl(Buffer.from(raw).toString('utf8'));
         } catch {
@@ -826,7 +875,7 @@ export class DevRunner {
     }
 
     private async resolvePackageManager(
-        target: Target,
+        work: vscode.Uri,
         config: vscode.WorkspaceConfiguration,
     ): Promise<PackageManager> {
         const configured = config.get<string>('packageManager', 'auto');
@@ -836,7 +885,7 @@ export class DevRunner {
         }
 
         try {
-            const entries = await vscode.workspace.fs.readDirectory(target.uri);
+            const entries = await vscode.workspace.fs.readDirectory(work);
 
             return detectPackageManager(entries.map(([name]) => name));
         } catch {
@@ -844,9 +893,9 @@ export class DevRunner {
         }
     }
 
-    private async scriptExists(target: Target, script: string): Promise<boolean> {
+    private async scriptExists(work: vscode.Uri, script: string): Promise<boolean> {
         try {
-            const raw = await vscode.workspace.fs.readFile(vscode.Uri.joinPath(target.uri, 'package.json'));
+            const raw = await vscode.workspace.fs.readFile(vscode.Uri.joinPath(work, 'package.json'));
 
             return hasScript(Buffer.from(raw).toString('utf8'), script);
         } catch {

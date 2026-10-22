@@ -69,6 +69,7 @@ The bulk commands cover every window; work for another window's project is hande
 | Setting | Default | Description |
 |---|---|---|
 | `pitwall.script` | `dev` | npm script to run. |
+| `pitwall.workingFolder` | `""` | Folder the dev server runs in when the app lives in a subfolder, relative to the project (e.g. `project`). Its `package.json`, lock file, `vite.config` and `.env` are the ones read. Empty = the project's folder; a path leading outside the project is refused. |
 | `pitwall.packageManager` | `auto` | `npm`, `pnpm`, `yarn` or `bun`. `auto` reads the lock file. |
 | `pitwall.port` | `0` | Port to use. `0` = `server.port` from `vite.config`, otherwise 5173; without a `vite.config`, the one the script picks. |
 | `pitwall.autoStart` | `lastSession` | What to start when the window opens: `lastSession`, `favorites`, `workspace` or `off`. |

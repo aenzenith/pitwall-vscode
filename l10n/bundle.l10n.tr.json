@@ -10,6 +10,7 @@
     "Open the output for details.": "Ayrıntı için çıktıya bak.",
     "Pitwall will not run this script: \"{0}\"": "Pitwall bu script'i çalıştırmaz: \"{0}\"",
     "{0}: package.json has no \"{1}\" script.": "{0}: package.json içinde \"{1}\" script'i yok.",
+    "{0}: the working folder \"{1}\" is not a folder inside the project.": "{0}: \"{1}\" çalışma klasörü projenin içinde bir klasör değil.",
     "could not start: {0}": "başlatılamadı: {0}",
     "process ended (code {0}, signal {1})": "süreç bitti (kod {0}, sinyal {1})",
     "crashed — {0}": "çöktü — {0}",
