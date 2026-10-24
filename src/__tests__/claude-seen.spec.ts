@@ -11,10 +11,12 @@ const PROJECT = '/Users/me/projects/paddock';
 
 let home: string;
 let storage: string;
-let realHome: string | undefined;
+// `os.homedir()` Windows'ta USERPROFILE'ı, ötekilerde HOME'u okur.
+const HOME_VARS = ['HOME', 'USERPROFILE'] as const;
+let realHome: Partial<Record<(typeof HOME_VARS)[number], string>>;
 
 beforeEach(() => {
-    realHome = process.env.HOME;
+    realHome = Object.fromEntries(HOME_VARS.map((name) => [name, process.env[name]]));
     home = fs.mkdtempSync(path.join(os.tmpdir(), 'pitwall-seen-'));
     storage = path.join(home, 'storage');
     fs.mkdirSync(storage);
@@ -22,14 +24,18 @@ beforeEach(() => {
     fs.mkdirSync(path.join(home, '.claude', 'projects', encodeProjectPath(PROJECT)), { recursive: true });
     fs.writeFileSync(path.join(storage, 'claude-seen.json'), JSON.stringify({ since: 0, paths: {} }));
     // ClaudeWatch `~/.claude` yolunu kurulurken alır.
-    process.env.HOME = home;
+    for (const name of HOME_VARS) {
+        process.env[name] = home;
+    }
 });
 
 afterEach(() => {
-    if (realHome === undefined) {
-        delete process.env.HOME;
-    } else {
-        process.env.HOME = realHome;
+    for (const name of HOME_VARS) {
+        if (realHome[name] === undefined) {
+            delete process.env[name];
+        } else {
+            process.env[name] = realHome[name];
+        }
     }
 
     fs.rmSync(home, { recursive: true, force: true });
