@@ -34,6 +34,14 @@ export type LiveStatus = {
 /** Turu bitmemiş oturum bu kadar yakında yazıldıysa çalışıyor sayılır. */
 export const WORKING_WINDOW_MS = 5 * 60 * 1000;
 
+/**
+ * Bakış, hâlâ açık bir istemin bu kadar öncesinde durur (`seenUpTo`): eklenti istemi Claude
+ * Code'un kendi sözünden (`statusUpdatedAt`), uygulama hook olayından tarihler; ikisi arasında
+ * bir an fark olabilir, Claude Code'un bildiriminden öğrenilen bir istemde birkaç saniye.
+ * Uygulamadaki `PROMPT_LEAD_MS` ile aynı.
+ */
+const PROMPT_LEAD_MS = 8_000;
+
 /** Kuyruktan çıkan karar: dikkat isteyen tur yoksa `turn` boştur (Claude çalışıyor ya da sıra kullanıcıda değil). */
 export type TailVerdict = {
     turn?: ClaudeTurn;
@@ -205,11 +213,15 @@ type SessionLog = {
     verdict?: TailVerdict;
 };
 
-/** Bir projedeki oturumun hâli ve beklediği tur; `fromLog`: bekleyişi kaydın son satırı söyledi. */
+/**
+ * Bir projedeki oturumun hâli ve beklediği tur; `fromLog`: bekleyişi kaydın son satırı söyledi;
+ * `running`: Claude Code oturumu çalışıyor diye listeliyor (süreci yaşıyor).
+ */
 type SessionState = {
     phase: SessionPhase;
     turn?: ClaudeTurn;
     fromLog: boolean;
+    running: boolean;
 };
 
 /**
@@ -272,10 +284,13 @@ export class ClaudeWatch extends EventEmitter {
             let states = this.statesFor(folderPath, dirs, baseline, recent, live);
 
             if (looking.has(folderPath)) {
-                if (states.some((state) => state.phase === 'waiting' && state.fromLog)) {
-                    book.paths[folderPath] = now;
+                const at = seenUpTo(states, now);
+
+                // Bir kez yazılır: istemden sonra biten tur bekledikçe her taramada yeniden değil.
+                if (at > baseline && states.some((state) => state.phase === 'waiting' && state.fromLog)) {
+                    book.paths[folderPath] = at;
                     touched = true;
-                    states = this.statesFor(folderPath, dirs, now, recent, live);
+                    states = this.statesFor(folderPath, dirs, at, recent, live);
                 }
 
                 // Açık istem görülmüş yazılmaz (uygulama onu yine haber verir), yalnız burada işaret konmaz.
@@ -302,14 +317,31 @@ export class ClaudeWatch extends EventEmitter {
         }
     }
 
-    /** Projedeki işi bakılmış sayar. */
+    /**
+     * Projedeki işi bakılmış sayar; Claude'u hâlâ çalışan bir oturumun açık izin istemi ya da
+     * sorusu ve ondan sonra gelen bakılmamış kalır (`seenUpTo`). Kalan varsa o gösterilir.
+     */
     public markSeen(folderPath: string): void {
         const book = this.readSeen();
+        const now = Date.now();
+        const dirs = this.listDirs();
+        const live = this.liveSessions();
+        const recent = now - WORKING_WINDOW_MS;
+        const at = seenUpTo(this.statesFor(folderPath, dirs, book.paths[folderPath] ?? book.since, recent, live), now);
 
-        book.paths[folderPath] = Date.now();
+        book.paths[folderPath] = at;
         this.writeSeen(book);
 
-        if (this.pendingByPath.delete(folderPath)) {
+        const left = at < now ? newestWaiting(this.statesFor(folderPath, dirs, at, recent, live)) : undefined;
+        const known = this.pendingByPath.get(folderPath);
+
+        if (left) {
+            this.pendingByPath.set(folderPath, left);
+        } else {
+            this.pendingByPath.delete(folderPath);
+        }
+
+        if (known?.kind !== left?.kind || known?.at !== left?.at) {
             this.emit('changed');
         }
     }
@@ -346,7 +378,7 @@ export class ClaudeWatch extends EventEmitter {
 
                 const { phase, turn } = sessionPhase(verdict, log.modified, baseline, recent, status);
 
-                states.push({ phase, turn, fromLog: status?.status !== 'waiting' });
+                states.push({ phase, turn, fromLog: status?.status !== 'waiting', running: status !== undefined });
             }
         }
 
@@ -550,6 +582,25 @@ function followed(live: LiveStatus | undefined): boolean {
 /** Claude Code oturumu boşta diyor (`shell`: arka planda bir komutu sürüyor). */
 function resting(live: LiveStatus | undefined): boolean {
     return live?.status === 'idle' || live?.status === 'shell';
+}
+
+/**
+ * Projeye bakılınca "görüldü" diye yazılacak an: şimdi, ya da Claude'u hâlâ çalışan bir oturumda
+ * açık bir izin istemi ya da soru varsa en erkeninin biraz öncesi (`PROMPT_LEAD_MS`). İstem cevaplanana dek bekler;
+ * uygulamanın `mark_seen`'iyle aynı (ortak kayıt en büyük zamanla birleşir, geçilen istemi
+ * uygulama da artık haber vermez). Süreci gitmiş oturumun istemini cevaplayacak kimse yoktur:
+ * sayılmaz, gerisiyle görülür.
+ */
+function seenUpTo(states: SessionState[], now: number): number {
+    let at = now;
+
+    for (const { phase, turn, running } of states) {
+        if (phase === 'waiting' && running && turn && turn.kind !== 'finished') {
+            at = Math.min(at, turn.at - PROMPT_LEAD_MS);
+        }
+    }
+
+    return at;
 }
 
 /** Bekleyen turların en yenisi. */
