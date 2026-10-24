@@ -5,6 +5,8 @@
 import * as fs from 'fs';
 import * as path from 'path';
 
+import { portFromUrl } from './ports';
+
 export type PackageManager = 'npm' | 'pnpm' | 'yarn' | 'bun';
 
 export type FolderLike = {
@@ -197,25 +199,111 @@ function isInside(filePath: string, folderPath: string): boolean {
  * o yüzden koddan üretiliyor. */
 const ANSI = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*[A-Za-z]`, 'g');
 
-const VITE_LOCAL = /Local:\s*(https?:\/\/[^\s]+)/i;
+/**
+ * Sunucunun kendi adresini söylediği satır: `Local:` (Vite, Next, Nuxt, Vue CLI, create-react-app),
+ * `Loopback:` (webpack-dev-server).
+ */
+const OWN_ADDRESS = /\b(?:Local|Loopback):\s*(https?:\/\/[^\s]+)/i;
 const ANY_LOCAL = /https?:\/\/(?:localhost|127\.0\.0\.1|\[::1\]):\d+[^\s]*/i;
 
+/** Dev sunucusunun çıktısında bulunan yerel URL. */
+export type LocalUrl = {
+    url: string;
+    /**
+     * Sunucunun kendi adres satırında mı (`OWN_ADDRESS`). Değilse çıktının herhangi bir yerindeki
+     * çıplak bir URL'dir; başkasının olabilir: proxy'nin hedefi, script'in yanında koşan bir süreç.
+     */
+    labelled: boolean;
+};
+
 /**
- * Dev sunucusu çıktısından yerel URL'i çeker.
+ * Dev sunucusu çıktısından yerel URL'i çeker; sunucunun kendi adres satırı önce gelir.
  *
  * @param output Terminal çıktısı (ANSI kodlu olabilir).
  */
-export function extractLocalUrl(output: string): string | undefined {
+export function extractLocalUrl(output: string): LocalUrl | undefined {
     const clean = output.replace(ANSI, '');
-    const labelled = clean.match(VITE_LOCAL);
+    const labelled = clean.match(OWN_ADDRESS);
 
     if (labelled) {
-        return trimUrl(labelled[1]);
+        return { url: trimUrl(labelled[1]), labelled: true };
     }
 
     const bare = clean.match(ANY_LOCAL);
 
-    return bare ? trimUrl(bare[0]) : undefined;
+    return bare ? { url: trimUrl(bare[0]), labelled: false } : undefined;
+}
+
+/** Çıktıdan okunan sunucu adresi ve ne kadar kesin olduğu. */
+export type ServerAddress = {
+    url: string;
+    port?: number;
+    /**
+     * Azdan çoğa: 0 bir satırdaki çıplak URL (proxy'nin hedefi ya da script'in yanında koşan başka
+     * bir süreç, sunucu kendininkini söylemeden önce basabilir; Django, Rails, Express kendininkini
+     * böyle söyler), 1 sunucunun kendi adres satırı, 2 Pitwall'ın sunucuyu başlattığı porttaki bir URL.
+     */
+    sureness: number;
+    /**
+     * Koşu birden çok portta URL bastı ve hiçbiri kesin değil: hangisinin sunucunun olduğu
+     * bilinmez.
+     */
+    ambiguous: boolean;
+};
+
+/**
+ * Satırdaki adres sunucunun adresi olur mu. İlk adres alınır; sonra gelen ancak daha kesinse
+ * öncekinin yerini alır (sunucunun kendi `Local:` satırından önce basılmış proxy hedefi). Çıplak
+ * adres başka bir portta bir URL daha görürse belirsizleşir (bkz. `isProbed`).
+ *
+ * @param current Şimdiki adres; henüz yoksa undefined.
+ * @param asked Pitwall'ın sunucuyu başlattığı port; script portunu kendi seçiyorsa undefined.
+ * @returns Satırdan sonraki adres, değiştiyse; değişmediyse undefined.
+ */
+export function nextAddress(
+    line: string,
+    current: ServerAddress | undefined,
+    asked: number | undefined,
+): ServerAddress | undefined {
+    const found = extractLocalUrl(line);
+
+    if (!found) {
+        return undefined;
+    }
+
+    const port = portFromUrl(found.url);
+    const sureness = port !== undefined && port === asked ? 2 : found.labelled ? 1 : 0;
+
+    if (!current || sureness > current.sureness) {
+        return { url: found.url, port, sureness, ambiguous: false };
+    }
+
+    if (current.sureness === 0 && !current.ambiguous && port !== current.port) {
+        return { ...current, ambiguous: true };
+    }
+
+    return undefined;
+}
+
+/**
+ * Sağlık yoklaması bu adrese bakar mı: yalnız sunucunun olduğu kesin olan porta (Pitwall'ın onu
+ * başlattığı port, kendi `Local:` satırındaki ya da koşunun bastığı tek port olduğu sürece çıplak
+ * bir URL'inki). İki ya da daha çok portta çıplak URL varsa (proxy'nin hedefi ve sunucununki)
+ * yoklanmaz: öbürü kapandı diye sağlıklı sunucu yeniden başlatılmaz.
+ */
+export function isProbed(address: ServerAddress | undefined): boolean {
+    return address?.port !== undefined && (address.sureness >= 1 || !address.ambiguous);
+}
+
+/** Vite bir değişikliği aldı: `[vite] hmr update /src/App.vue`, `[vite] (client) page reload …`. */
+const UPDATE = /\[vite\]\s+(?:\(\w+\)\s+)?(?:hmr update|page reload)\b/i;
+
+/**
+ * Satır, sunucunun bir değişikliği aldığını mı söylüyor (Vite'ın `hmr update`, `page reload`
+ * satırları): önceki hata giderilmiştir; giderilmediyse hemen ardından yeniden basılır.
+ */
+export function isUpdateLine(line: string): boolean {
+    return UPDATE.test(line.replace(ANSI, ''));
 }
 
 /**
@@ -306,6 +394,25 @@ export function detectPortConflict(output: string): { port: number; fatal: boole
     }
 
     return undefined;
+}
+
+/**
+ * Sunucu kendi dolu portu yüzünden mi düştü (boş porta taşınacak mı): yalnız adresi okunmadan önce
+ * basılan ve Pitwall'ın onu başlattığı portu söyleyen EADDRINUSE (port bilinmiyorsa her biri).
+ * Script'in yanında koşan başka bir sürecin (API, worker) kendi dolu portu ya da sunucu ayaktayken
+ * basılan bir EADDRINUSE onu taşımaya sebep değildir.
+ *
+ * @param address Sunucunun okunmuş adresi; henüz yoksa undefined.
+ * @param asked Pitwall'ın sunucuyu başlattığı port; script portunu kendi seçiyorsa undefined.
+ */
+export function diedOnBusyPort(
+    conflict: { port: number; fatal: boolean },
+    address: ServerAddress | undefined,
+    asked: number | undefined,
+): boolean {
+    const own = asked === undefined || asked === conflict.port;
+
+    return conflict.fatal && conflict.port > 0 && address === undefined && own;
 }
 
 /**

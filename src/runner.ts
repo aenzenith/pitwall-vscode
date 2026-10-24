@@ -3,7 +3,7 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 
 import { OutputMirror, outputPath } from './output';
-import { findFreePort, isPortServed, portFromUrl } from './ports';
+import { findFreePort, isPortServed } from './ports';
 import { killTree, spawnShell } from './process';
 import type { ProjectIssue, ProjectState } from './registry';
 import {
@@ -11,14 +11,18 @@ import {
     detectErrorLine,
     detectPackageManager,
     detectPortConflict,
-    extractLocalUrl,
+    diedOnBusyPort,
     hasScript,
     herdFallbackUrl,
+    isProbed,
     isUnsafeScript,
+    isUpdateLine,
+    nextAddress,
     parseAppUrl,
     parseVitePort,
     resolveWorkingFolder,
     type PackageManager,
+    type ServerAddress,
 } from './resolve';
 
 /** Dev çalıştırılabilecek bir klasör. Workspace kökü ya da favori olabilir. */
@@ -27,6 +31,9 @@ export type Target = {
     name: string;
     uri: vscode.Uri;
 };
+
+/** Sürecin çıktı akışlarından biri. */
+type Stream = 'stdout' | 'stderr';
 
 /** Arka planda koşan bir dev sunucusu. */
 type Run = {
@@ -37,14 +44,24 @@ type Run = {
     /** Paylaşılan çıktı dosyası, kayıt klasörüne göre (bkz. `outputPath`). */
     output?: string;
     startedAt: number;
-    /** Çıktının son parçası: URL ve port çakışması burada aranır. */
-    buffer: string;
+    /**
+     * Her akışın henüz bitmemiş son satırı: bir sonraki parçayla birlikte, akış kapanınca da tek
+     * başına okunur.
+     */
+    partial: Record<Stream, string>;
     /** Adres bulunduğunda tarayıcıda açılacak mı. */
     openUrl: boolean;
     settled: boolean;
     timer?: ReturnType<typeof setTimeout>;
     url?: string;
     port?: number;
+    /**
+     * Pitwall'ın sunucuyu başlattığı port (ayardaki, vite.config'teki ya da yerine verilen boş
+     * port); script portunu kendi seçiyorsa undefined.
+     */
+    asked?: number;
+    /** Çıktıdan okunan adres ve ne kadar kesin olduğu (`url` ve `port` ondan gelir). */
+    address?: ServerAddress;
     /**
      * Bilerek durduruldu: çıkışı çökme sayılmaz. Çıkış olayı `stop` bittikten sonra da gelebilir
      * (TERM'den sonra KILL giden grup); o yüzden proje değil koşu işaretlenir.
@@ -118,7 +135,10 @@ export class DevRunner {
 
     private readonly busy = new Set<string>();
 
-    /** Dolu porttan kurtarma denemesi yapılmış projeler. */
+    /**
+     * Son elle başlatmadan beri dolu porttan taşınmış projeler: başlatma başına bir kez, port dolu
+     * kaldıkça sunucu durmadan taşınmasın.
+     */
     private readonly retried = new Set<string>();
 
     /** Bu oturumda dağıtılmış portlar: port -> dağıtım anı ve alan proje. */
@@ -194,11 +214,14 @@ export class DevRunner {
     }
 
     /**
+     * Elle başlatma: yeniden başlatma sayacı ve dolu porttan bir kez taşınma hakkı sıfırlanır.
+     *
      * @param openUrl Sunucu hazır olunca tarayıcıda adres açılsın mı. Reload'da açılmaz.
      * @param extraArgs Script'e geçirilecek ek argüman, ör. `['--port', '5176']`.
      */
     public async start(target: Target, openUrl = true, extraArgs: readonly string[] = []): Promise<void> {
         this.attempts.delete(target.path);
+        this.retried.delete(target.path);
         await this.launch(target, openUrl, extraArgs);
     }
 
@@ -257,7 +280,10 @@ export class DevRunner {
         }
 
         const manager = await this.resolvePackageManager(work.uri, config);
-        const args = extraArgs.length > 0 ? extraArgs : await this.freePortArgs(target, work.uri, config);
+        const { args, port: asked } =
+            extraArgs.length > 0
+                ? { args: extraArgs, port: portArg(extraArgs) }
+                : await this.freePortArgs(target, work.uri, config);
         const command = buildCommand(manager, script, args);
         const channel = this.channelFor(target);
 
@@ -288,9 +314,10 @@ export class DevRunner {
             mirror,
             output,
             startedAt,
-            buffer: '',
+            partial: { stdout: '', stderr: '' },
             openUrl: openUrl && config.get<boolean>('openUrlOnStart', false),
             settled: false,
+            asked,
         };
 
         this.runs.set(target.path, run);
@@ -301,8 +328,10 @@ export class DevRunner {
             channel.show(true);
         }
 
-        child.stdout?.on('data', (chunk: Buffer) => void this.consume(target, run, chunk.toString()));
-        child.stderr?.on('data', (chunk: Buffer) => void this.consume(target, run, chunk.toString()));
+        child.stdout?.on('data', (chunk: Buffer) => void this.consume(target, run, 'stdout', chunk.toString()));
+        child.stderr?.on('data', (chunk: Buffer) => void this.consume(target, run, 'stderr', chunk.toString()));
+        child.stdout?.on('end', () => void this.consumeRest(target, run, 'stdout'));
+        child.stderr?.on('end', () => void this.consumeRest(target, run, 'stderr'));
 
         child.once('error', (error: Error) => {
             channel.appendLine(`\n[pitwall] ${vscode.l10n.t('could not start: {0}', error.message)}`);
@@ -398,31 +427,75 @@ export class DevRunner {
 
     /* ---------- çıktı ---------- */
 
-    private async consume(target: Target, run: Run, text: string): Promise<void> {
+    private async consume(target: Target, run: Run, stream: Stream, text: string): Promise<void> {
         run.channel.append(text);
-        run.buffer = `${run.buffer}${text}`.slice(-4096);
 
-        const conflict = detectPortConflict(run.buffer);
+        // Satır iki parça arasında bölünebilir: yarım kalan sonu bir sonraki parçayla birlikte
+        // okunur. Her satır bir kez ve tek başına okunur; çıktının sonu her parçada baştan taranmaz.
+        const lines = `${run.partial[stream]}${text}`.split('\n');
+
+        run.partial[stream] = (lines.pop() ?? '').slice(-4096);
+        await this.readLines(target, run, lines);
+    }
+
+    /** Akış kapandı: satır sonu gelmeden kalan son satır da okunur (en son basılan hata ya da adres). */
+    private async consumeRest(target: Target, run: Run, stream: Stream): Promise<void> {
+        const rest = run.partial[stream];
+
+        run.partial[stream] = '';
+
+        if (rest !== '') {
+            await this.readLines(target, run, [rest]);
+        }
+    }
+
+    /**
+     * Satırları sırayla okur. Süreç çıktıktan sonra gelenler de okunur (çökmenin hatası), ama
+     * bilerek durdurulan ya da yerine yenisi başlatılan koşunun kalan satırları okunmaz.
+     */
+    private async readLines(target: Target, run: Run, lines: readonly string[]): Promise<void> {
+        for (const line of lines) {
+            const current = this.runs.get(target.path);
+
+            if (run.stopped || (current !== undefined && current !== run)) {
+                return;
+            }
+
+            await this.readLine(target, run, line);
+        }
+    }
+
+    /** Çıktının bir satırı: sunucunun adresi, dolu bir port, bir hata ya da Vite'ın aldığı değişiklik. */
+    private async readLine(target: Target, run: Run, line: string): Promise<void> {
+        const conflict = detectPortConflict(line);
 
         if (conflict) {
-            run.buffer = '';
-            await this.recoverFromConflict(target, conflict);
+            await this.recoverFromConflict(target, run, conflict);
 
             return;
         }
 
-        const errorLine = detectErrorLine(text);
+        const errorLine = detectErrorLine(line);
 
-        if (errorLine) {
+        if (errorLine && this.issues.get(target.path)?.kind !== 'crashed') {
+            // Bir çökmeden sonra geç gelen son satır, çökme notunun yerine geçmez.
             this.issues.set(target.path, { kind: 'error', text: errorLine });
+            this.onChange();
+        } else if (isUpdateLine(line) && this.issues.get(target.path)?.kind === 'error') {
+            // Sunucu hatadan sonra bir değişiklik aldı: hata giderildi (giderilmediyse hemen
+            // ardından yeniden basılır).
+            this.issues.delete(target.path);
             this.onChange();
         }
 
-        const localUrl = extractLocalUrl(run.buffer);
+        const address = nextAddress(line, run.address, run.asked);
 
-        if (localUrl) {
-            run.buffer = '';
-            await this.settleUrl(target, localUrl);
+        if (address) {
+            run.address = address;
+            run.url = address.url;
+            run.port = address.port;
+            this.onChange();
+            await this.settleUrl(target, address.url);
         }
     }
 
@@ -486,13 +559,14 @@ export class DevRunner {
 
     /**
      * Süreç ayakta ama port cevap vermiyorsa satır uyarıya döner ve kurtarma planlanır.
-     * Port bilinmiyorsa (adres henüz basılmadıysa) dokunulmaz.
+     * Port bilinmiyorsa (adres henüz basılmadıysa) ya da kesin sunucunun değilse (bkz. `isProbed`)
+     * dokunulmaz.
      */
     private async checkHealth(): Promise<void> {
         let changed = false;
 
         for (const [folderPath, run] of this.runs) {
-            if (!run.port || this.busy.has(folderPath)) {
+            if (!run.port || !isProbed(run.address) || this.busy.has(folderPath)) {
                 continue;
             }
 
@@ -528,7 +602,9 @@ export class DevRunner {
             return;
         }
 
-        if (await isPortServed(run.port)) {
+        // Bu arada başka bir portta bir URL daha basıldı, adres belirsizleşti: sessiz port artık
+        // sunucunun sayılmaz.
+        if (!isProbed(run.address) || (await isPortServed(run.port))) {
             if (this.issues.get(folderPath)?.kind === 'unresponsive') {
                 this.issues.delete(folderPath);
                 this.onChange();
@@ -604,7 +680,10 @@ export class DevRunner {
         return used + 1;
     }
 
-    /** Sunucunun adresi belli oldu: durumu işaretle, gerekiyorsa tarayıcıda aç. */
+    /**
+     * Sunucunun ilk adresi okundu ya da bekleme süresi doldu: durumu işaretle, gerekiyorsa
+     * tarayıcıda aç. Adresin kendisini `readLine` yazar; sonra okunan daha kesin bir adres de.
+     */
     private async settleUrl(target: Target, localUrl: string | undefined): Promise<void> {
         const run = this.runs.get(target.path);
 
@@ -614,12 +693,6 @@ export class DevRunner {
 
         run.settled = true;
         this.clearTimer(run);
-
-        if (localUrl) {
-            run.url = localUrl;
-            run.port = portFromUrl(localUrl);
-            this.onChange();
-        }
 
         if (!run.openUrl) {
             return;
@@ -633,11 +706,15 @@ export class DevRunner {
     }
 
     /**
-     * Sunucu dolu porta düşerse sessizce boş porta taşınır.
-     * Proje başına bir kez denenir, döngüye girmesin.
+     * Sunucu kendi dolu portu yüzünden düştüyse (bkz. `diedOnBusyPort`) sessizce boş porta taşınır.
+     * Elle başlatma başına bir kez denenir, döngüye girmesin.
      */
-    private async recoverFromConflict(target: Target, conflict: { port: number; fatal: boolean }): Promise<void> {
-        if (!conflict.fatal || conflict.port <= 0 || this.retried.has(target.path)) {
+    private async recoverFromConflict(
+        target: Target,
+        run: Run,
+        conflict: { port: number; fatal: boolean },
+    ): Promise<void> {
+        if (!diedOnBusyPort(conflict, run.address, run.asked) || this.retried.has(target.path)) {
             return;
         }
 
@@ -732,25 +809,28 @@ export class DevRunner {
      * Sessiz çalışır — kullanıcıya sorulmaz, söylenmez. Port istemeyen projeye (ayarda port yok,
      * vite.config yok) `--port` verilmez: script kendi portunu seçer (Next, Nuxt, Astro dolu
      * porttan kendisi geçer), bazısı bu bayrağı reddeder.
+     *
+     * @returns Script'e geçirilecek argümanlar ve sunucunun açılması beklenen port (port istemeyen
+     *   projede undefined).
      */
     private async freePortArgs(
         target: Target,
         work: vscode.Uri,
         config: vscode.WorkspaceConfiguration,
-    ): Promise<string[]> {
+    ): Promise<{ args: string[]; port?: number }> {
         const base = await this.basePort(work, config);
 
         if (base === undefined) {
-            return [];
+            return { args: [] };
         }
 
         const free = await this.reserveFreePort(base, target.path);
 
         if (!free || free === base) {
-            return [];
+            return { args: [], port: base };
         }
 
-        return ['--port', String(free)];
+        return { args: ['--port', String(free)], port: free };
     }
 
     /**
@@ -906,4 +986,12 @@ export class DevRunner {
 
 function wait(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/** Argümanlardaki `--port 5176` değeri; yoksa undefined. */
+function portArg(args: readonly string[]): number | undefined {
+    const at = args.indexOf('--port');
+    const port = at >= 0 ? Number(args[at + 1]) : NaN;
+
+    return Number.isInteger(port) && port > 0 ? port : undefined;
 }

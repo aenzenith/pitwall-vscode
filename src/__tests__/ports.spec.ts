@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { parseLsof, portFromUrl } from '../ports';
-import { buildCommand, detectPortConflict } from '../resolve';
+import { buildCommand, detectPortConflict, diedOnBusyPort } from '../resolve';
 
 describe('parseLsof', () => {
     it('süreç adı ve pid çıkarır', () => {
@@ -49,6 +49,29 @@ describe('detectPortConflict', () => {
 
     it('normal çıktıda çakışma yok', () => {
         expect(detectPortConflict('  ➜  Local:   http://localhost:5173/')).toBeUndefined();
+    });
+});
+
+describe('diedOnBusyPort', () => {
+    const address = { url: 'http://localhost:5173/', port: 5173, sureness: 2, ambiguous: false };
+    const busy = (port: number) => ({ port, fatal: true });
+
+    // Taşımak sunucuyu durdurur, çıktısını siler ve başka porta açar: yalnız gerçekten kendi
+    // portunda düşen sunucu için.
+    it('sunucu ayaktayken basılan EADDRINUSE onu taşımaz', () => {
+        expect(diedOnBusyPort(busy(5173), address, 5173)).toBe(false);
+        expect(diedOnBusyPort(busy(4000), address, undefined)).toBe(false);
+    });
+
+    it('yanında koşan başka bir sürecin dolu portu onu taşımaz', () => {
+        expect(diedOnBusyPort(busy(4000), undefined, 5173)).toBe(false);
+    });
+
+    it('kendi portunda düşen sunucu taşınır; port bilinmiyorsa her EADDRINUSE sayılır', () => {
+        expect(diedOnBusyPort(busy(5173), undefined, 5173)).toBe(true);
+        expect(diedOnBusyPort(busy(3000), undefined, undefined)).toBe(true);
+        expect(diedOnBusyPort({ port: 5173, fatal: false }, undefined, 5173)).toBe(false);
+        expect(diedOnBusyPort(busy(0), undefined, undefined)).toBe(false);
     });
 });
 
