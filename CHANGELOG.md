@@ -4,6 +4,14 @@ All notable changes to this extension are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and releases are cut
 by release-please from Conventional Commits.
 
+## [1.2.1](https://github.com/aenzenith/pitwall-vscode/compare/v1.2.0...v1.2.1) (2026-10-24)
+
+
+### Bug Fixes
+
+* **claude:** a look never hides a question still open ([4bdfa96](https://github.com/aenzenith/pitwall-vscode/commit/4bdfa9673eb42f0309880e559fb5e83802c83f20))
+* **runner:** the address, a busy port and an error follow the server ([7c51e63](https://github.com/aenzenith/pitwall-vscode/commit/7c51e63e25af17fa3f566f56fcbcd548d393f099))
+
 ## [1.2.0](https://github.com/aenzenith/pitwall-vscode/compare/v1.1.2...v1.2.0) (2026-10-22)
 
 
